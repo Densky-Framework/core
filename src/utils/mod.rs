@@ -2,6 +2,9 @@ use std::env::JoinPathsError;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+mod url_to_matcher;
+pub use url_to_matcher::*;
+
 pub fn relative_path(target: String, base: String) -> Option<PathBuf> {
     let relative = pathdiff::diff_paths(target, base)?;
     let relative = relative.to_str()?;

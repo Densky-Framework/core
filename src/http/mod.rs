@@ -1,12 +1,14 @@
 mod discover;
 #[cfg(test)]
 mod mod_test;
+mod parser;
 mod tree;
 
 use std::path::PathBuf;
 use std::str::FromStr;
 
 pub use discover::*;
+pub use parser::*;
 pub use tree::*;
 
 use crate::utils::{join_paths, relative_path};
