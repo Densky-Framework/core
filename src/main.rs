@@ -14,7 +14,7 @@ fn main() {
         }
     };
     let example_server = join_paths(rel_path, path.display().to_string()).unwrap();
-    let http_tree = http_discover(CompileContext {
+    let _http_tree = http_discover(CompileContext {
         output_dir: join_paths(".densky", example_server.clone()).unwrap_or_else(|err| {
             println!("{:#?}", err);
             String::from("PATH")
@@ -26,5 +26,5 @@ fn main() {
         static_prefix: "static/".to_string(),
     });
 
-    println!("{:#?}", http_tree.map(|tree| tree.borrow().clone()));
+    println!("{:#?}", _http_tree.map(|tree| tree.borrow().clone()));
 }
