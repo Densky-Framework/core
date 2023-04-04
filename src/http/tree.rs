@@ -1,6 +1,9 @@
+use colored::*;
 use std::cell::RefCell;
 use std::fmt;
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use super::HttpLeaf;
 
@@ -21,6 +24,49 @@ pub struct HttpTree {
     pub is_root: bool,
     pub is_fallback: bool,
     pub is_middleware: bool,
+}
+
+impl fmt::Display for HttpTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let has_leaf = self.leaf.is_some();
+        let name = format!(
+            "{} {}",
+            match (self.is_root, has_leaf) {
+                (true, true) => "★".yellow(),
+                (true, false) => "☆".bright_yellow(),
+                (false, true) => "▲".yellow(),
+                (false, false) => "△".bright_yellow(),
+            },
+            &self.rel_path.bold()
+        );
+        f.write_str(&name)?;
+
+        if self.middleware.is_some() {
+            f.write_str(&format!(
+                "\n{} ■ {}",
+                "|".dimmed().bright_black(),
+                "middleware".bright_black()
+            ))?;
+        }
+
+        for child in &self.children {
+            let child = child.borrow();
+            let fmtd = format!("{}", child);
+
+            for line in fmtd.split("\n") {
+                write!(f, "\n{} {}", "|".dimmed().bright_black(), line)?;
+            }
+        }
+        if self.fallback.is_some() {
+            f.write_str(&format!(
+                "\n{} {}",
+                "|".dimmed().bright_black(),
+                "...fallback".bright_black()
+            ))?;
+        }
+
+        Ok(())
+    }
 }
 
 impl fmt::Debug for HttpTree {
@@ -63,7 +109,7 @@ impl fmt::Debug for HttpTree {
             .field("children", &children)
             .field("leaf", &format_args!("{}", leaf))
             .field("middleware", &self.middleware)
-            .field("fallback", &fallback)
+            .field("fallback", &self.fallback)
             .finish()
     }
 }
@@ -119,6 +165,15 @@ impl HttpTree {
         }
     }
 
+    pub fn is_convention(&self) -> bool {
+        let last_part = PathBuf::from_str(&self.path).unwrap();
+        let last_part = last_part.iter().nth_back(0).unwrap();
+        let last_part = last_part.to_str().unwrap().to_string();
+
+        // Ignore all routes that starts with '_'
+        last_part == "_fallback" || last_part == "_middleware"
+    }
+
     /// Verify if the path is direct child of `self` and
     /// also if ends with the provided pattern
     fn ends_with(&self, path: &String, pattern: &str) -> bool {
@@ -153,22 +208,21 @@ impl HttpTree {
             child.set_rel_path("<MIDDLEWARE>".to_string());
             this.middleware = Some(Rc::new(RefCell::new(child.clone())));
         } else if this.ends_with(&path, "_index") {
-            let child_ = child.leaf.clone();
-            if let Some(child) = child_ {
-                child.borrow_mut().path = this.path.clone();
-                child.borrow_mut().rel_path = this.rel_path.clone();
-
-                this.leaf = Some(child);
-            }
-            drop(child);
+            child.set_rel_path(this.rel_path.clone());
+            this.leaf = child.leaf.clone();
         } else {
-            let last_part = path.split('/').last().unwrap();
-            let is_ignored = last_part.starts_with('_');
+            let last_part = PathBuf::from_str(&path).unwrap();
+            let prefix_part = last_part.parent().unwrap().to_str().unwrap().to_string();
+            let last_part = last_part.iter().nth_back(0).unwrap();
+            let last_part = last_part.to_str().unwrap().to_string();
             let is_index = last_part == "_index";
-            let is_convention = last_part == "_fallback" || last_part == "_middleware" || is_index;
 
             // Ignore all routes that starts with '_'
-            if is_ignored && !is_convention {
+            if last_part.starts_with('_')
+                && !is_index
+                && last_part != "_fallback"
+                && last_part != "_middleware"
+            {
                 return;
             }
 
@@ -227,14 +281,18 @@ impl HttpTree {
             let leaf = if let Some((common_child_, common_path)) = common_path {
                 let common_child = common_child_.as_ref().borrow();
                 let common_child_path = common_child.path.clone();
+
                 let is_container = common_child.is_container;
                 let is_container = is_container && path.starts_with(&common_child_path);
+
+                // If is container, then insert the new child to it
                 if is_container {
                     child.rel_path = (&path[common_child.path.len()..]).to_string();
                     drop(common_child);
                     HttpTree::add_child(common_child_.clone(), child);
                     None
                 } else {
+                    // else, then merge into one common container
                     drop(common_child);
                     let common_child_id = common_child_.borrow().get_id();
                     let parent = HttpTree {
@@ -253,23 +311,29 @@ impl HttpTree {
                     Some((parent.clone(), Some(common_child_id)))
                 }
             } else if is_index {
-                let path = &child.path[0..(child.path.len() - last_part.len() - 1)];
-                let common_path = &path[(this.path.len() + 1)..];
+                // If try to put an _index without sliblings, then create a
+                // container for it and use the child as leaf
+                let rel_path = PathBuf::from_str(&child.rel_path).unwrap();
+                let rel_path = rel_path.parent().unwrap().to_str().unwrap().to_string();
+
+                // Update the rel_path for leaf
+                child.set_rel_path(rel_path.clone());
+
                 let parent = HttpTree {
-                    path: path.to_string(),
-                    rel_path: common_path.to_string(),
+                    path: prefix_part,
+                    rel_path: rel_path.clone(),
                     is_container: true,
+                    leaf: child.leaf.clone(),
                     ..Default::default()
                 };
-                let parent = Rc::new(RefCell::new(parent));
-                HttpTree::add_child(parent.clone(), child);
-                Some((parent.clone(), None))
+                Some((Rc::new(RefCell::new(parent)), None))
             } else {
+                // If there's no common slibling, then put it inside
                 Some((Rc::new(RefCell::new(child.clone())), None))
             };
 
             // This is for borrowing errors, all are computed on the above
-            // block and here the actions are executed.
+            // block and the actions are executed here.
             if let Some((leaf, remove_id)) = leaf {
                 if let Some(remove_id) = remove_id {
                     this.children
