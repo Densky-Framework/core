@@ -26,5 +26,12 @@ fn main() {
         static_prefix: "static/".to_string(),
     });
 
-    println!("{:#?}", http_tree.map(|tree| tree.borrow().clone()));
+    let http_tree = http_tree.map(|tree| tree.borrow().clone());
+
+    if let Ok(http_tree) = &http_tree {
+        // println!("{:#?}", http_tree);
+        println!("{}", http_tree);
+    } else {
+        println!("{:#?}", http_tree);
+    }
 }
