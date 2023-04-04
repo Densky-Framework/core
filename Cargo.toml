@@ -8,5 +8,6 @@ regex = "1.7.1"
 glob = "0.3.1"
 notify = "5.1.0"
 pathdiff = "0.2.1"
+colored = "2"
 
 dynamic-html = { path = "../dynamic-html" }
