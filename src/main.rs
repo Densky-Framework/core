@@ -17,22 +17,23 @@ fn process_entry(http_tree: &HttpTree) {
             Err(densky_core::http::HttpParseError::Empty(_)) => return,
             Err(err) => panic!("{}", err),
         };
-        if !http_tree.is_convention() {
-            let matcher = UrlMatcher::new("TARGET".to_owned(), http_tree.rel_path.to_owned());
-            println!("-------\n{:#?}\n--------", &matcher);
-            println!("--- SERIAL_DECL");
-            println!("{}", matcher.serial_decl());
-            println!("--- PREPARE_DECL");
-            println!("{}", matcher.prepare_decl("req".to_owned()));
-            println!("--- START_DECL");
-            println!("{}", matcher.start_decl(Some("req.params".to_owned())));
-            println!("--- EXACT_DECL");
-            println!("{}", matcher.exact_decl(Some("req.params".to_owned())));
-            println!("--- UPDATE_DECL");
-            println!("{}", matcher.update_decl("req".to_owned()));
-        }
+        // if !http_tree.is_convention() {
+        //     let matcher = UrlMatcher::new("TARGET".to_owned(), http_tree.rel_path.to_owned());
+        //     println!("-------\n{:#?}\n--------", &matcher);
+        //     println!("--- SERIAL_DECL");
+        //     println!("{}", matcher.serial_decl());
+        //     println!("--- PREPARE_DECL");
+        //     println!("{}", matcher.prepare_decl("req".to_owned()));
+        //     println!("--- START_DECL");
+        //     println!("{}", matcher.start_decl(Some("req.params".to_owned())));
+        //     println!("--- EXACT_DECL");
+        //     println!("{}", matcher.exact_decl(Some("req.params".to_owned())));
+        //     println!("--- UPDATE_DECL");
+        //     println!("{}", matcher.update_decl("req".to_owned()));
+        // }
 
         // let output = format!("{:#?}", handler.borrow());
+        println!("{:#?}", handler.borrow());
         // let output_path = leaf.borrow().output_path.display().to_string();
         // println!("{}", &output_path);
         // let _ = fs::create_dir_all(join_paths("..", output_path.clone()).unwrap());
