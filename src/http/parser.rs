@@ -188,7 +188,7 @@ pub fn http_parse(
             if req_param.as_str() == REQ_PARAM {
                 "".to_string()
             } else {
-                format!("let {}: $Densky$.HTTPRequest = {};\n", req_param, REQ_PARAM)
+                format!("let {} = {};\n", req_param, REQ_PARAM)
             }
         } else {
             "".to_string()

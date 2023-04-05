@@ -1,5 +1,6 @@
 pub const PREPARE_PREFIX: &str = "__matcher_prepare_";
 pub const SERIAL_PREFIX: &str = "__matcher_serial_";
+pub const MATCHER_PREFIX: &str = "__matcher_matcher_";
 
 #[derive(Debug, Clone)]
 pub enum UrlMatcherSegment {
@@ -51,7 +52,9 @@ impl UrlMatcher {
         let segments: Vec<UrlMatcherSegment> = url
             .split('/')
             .map(|segment| {
-                if &segment[0..1] == "$" {
+                if segment.len() == 0 {
+                    UrlMatcherSegment::Static(segment.to_string())
+                } else if &segment[0..1] == "$" {
                     UrlMatcherSegment::Var(segment[1..].to_string())
                 } else {
                     UrlMatcherSegment::Static(segment.to_string())
@@ -72,51 +75,27 @@ impl UrlMatcher {
     pub fn exact_decl(&self, param: Option<String>) -> String {
         if self.has_variables {
             format!(
-                "((t, p, m, n) => {{\
-          if (t.length !== p.length) return false;\
-          const s = t.every((tp,i) => {{\
-            if (!p[i]) return false;\
-            if (p[i].isVar) {{\
-              n.set(p[i].varname,tp);\
-              return true;\
-            }} \
-            if (p[i].raw === tp) return true;\
-            return false;\
-          }});\
-          if (s) [...n.entries()].forEach(([k, v]) => m.set(k, v));\
-          return s;\
-        }})({2}{0}, {3}{0}, {1}, new Map())",
+                "{4}EXACT({2}{0}, {3}{0}, {1}, new Map())",
                 self.target_name,
                 param.unwrap(),
                 PREPARE_PREFIX,
-                SERIAL_PREFIX
+                SERIAL_PREFIX,
+                MATCHER_PREFIX
             )
         } else {
-            format!("{}{} == '{}'", PREPARE_PREFIX, self.target_name, self.url)
+            format!("{}{} === '{}'", PREPARE_PREFIX, self.target_name, self.url)
         }
     }
 
     pub fn start_decl(&self, param: Option<String>) -> String {
         if self.has_variables {
             format!(
-                "((t, p, m, n) => {{\
-          if (t.length < p.length) return false;\
-          const s = p.every((tp,i) => {{\
-            if (!t[i]) return false;\
-            if (tp.isVar) {{\
-              n.set(tp.varname, p[i]);\
-              return true;\
-            }} \
-            if (tp.raw === p[i]) return true;\
-            return false;\
-          }});\
-          if (s) [...n.entries()].forEach(([k, v]) => m.set(k, v));\
-          return s;\
-        }})({2}{0}, {3}{0}, {1}, new Map())",
+                "{4}START({2}{0}, {3}{0}, {1}, new Map())",
                 self.target_name,
                 param.unwrap(),
                 PREPARE_PREFIX,
-                SERIAL_PREFIX
+                SERIAL_PREFIX,
+                MATCHER_PREFIX
             )
         } else {
             format!(
@@ -140,6 +119,35 @@ impl UrlMatcher {
         )
     }
 
+    pub fn update_decl(&self, val: String) -> String {
+        let accumulator = format!("{}.__accumulator__", &val);
+        let corrector = if self.url == "/" { 1 } else { 0 };
+        let segments_code = format!(
+            "{0}.segments = {0}.segments.slice({1});",
+            &accumulator,
+            self.segments.len() - corrector
+        );
+        if self.has_variables {
+            format!(
+                "{{
+  const my = {1}.path.split(\"/\").slice(0, {2});
+  {0}
+  {1}.path = {1}.path.slice(my.join(\"/\").length + 1)
+}}",
+                segments_code,
+                accumulator,
+                self.segments.len()
+            )
+        } else {
+            format!(
+                "{0}\n{1}.path = {1}.path.slice({2})",
+                segments_code,
+                accumulator,
+                self.url.len() + 1 - corrector
+            )
+        }
+    }
+
     pub fn serial_decl(&self) -> String {
         if !self.has_variables {
             "".to_string()
@@ -152,8 +160,60 @@ impl UrlMatcher {
             serialized.pop();
             serialized += "]";
             format!(
-                "const {}{} = {};",
-                SERIAL_PREFIX, self.target_name, serialized
+                "{}\n{}\n{}",
+                format!(
+                    "const {}{} = {};",
+                    SERIAL_PREFIX, self.target_name, serialized
+                ),
+                format!(
+                    "const {}EXACT = (target, serial, resultMap, paramMap) => {{
+  if (target.length !== serial.length) return false;
+
+  for (let i = 0; i < target.length; i++) {{
+    const targetParam = target[i];
+    const serialParam = serial[i];
+
+    if (serialParam.isVar) {{
+      paramMap.set(serialParam.varname, targetParam);
+    }} else if (serialParam.raw !== targetParam) {{
+      return false;
+    }}
+  }}
+
+  for (const [key, value] of paramMap) {{
+    resultMap.set(key, value);
+  }}
+
+  return true;
+}};
+",
+                    MATCHER_PREFIX
+                ),
+                format!(
+                    "const {}START = (target, serial, resultMap, paramMap) => {{
+  if (target.length < serial.length) return false;
+
+  for (let i = 0; i < serial.length; i++) {{
+    if (!target[i]) return false;
+
+    const serialParam = serial[i];
+    const targetParam = target[i];
+
+    if (serialParam.isVar) {{
+      paramMap.set(serialParam.varname, targetParam);
+    }} else if (serialParam.raw !== targetParam) {{
+      return false;
+    }}
+  }}
+
+  for (const [key, value] of paramMap.entries()) {{
+    resultMap.set(key, value);
+  }}
+
+  return true;
+}}",
+                    MATCHER_PREFIX
+                )
             )
         }
     }
