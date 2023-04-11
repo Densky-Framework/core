@@ -7,7 +7,6 @@ use regex::Regex;
 #[derive(Debug)]
 pub enum HttpParseError {
     Empty(String),
-    NoClass(String),
     InvalidSyntax(String, String),
     CurrentDir(std::io::Error),
 }
@@ -16,13 +15,12 @@ impl fmt::Display for HttpParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CurrentDir(err) => err.fmt(f),
-            Self::Empty(rel_path) | Self::NoClass(rel_path) | Self::InvalidSyntax(rel_path, _) => {
+            Self::Empty(rel_path) | Self::InvalidSyntax(rel_path, _) => {
                 f.write_str(format!("[{}]", rel_path).as_str())?;
                 f.write_str(match self {
                     Self::Empty(_) => "The file is empty or very short (less than 10 characters)",
-                    Self::NoClass(_) => "The file isn't export correct class. The class must be exported as default and must implement IController",
                     Self::InvalidSyntax(_, message) => &message,
-                    _ => ""
+                    _ => "",
                 })
             }
         }
@@ -61,27 +59,20 @@ pub struct HttpHandler {
 }
 
 /*
- * export default class _ implements IController {
- * ^ Class definition
- *   GET      (reqParam: TYPE): TYPE {
- *   ^ METHOD  ^ req_param
- *     // ..
- *     ^ BODY
- *   }
+ * export function      GET(reqParam: TYPE): TYPE {
+ * ^ Handler definition  ^ METHOD
+ *   // ..
+ *   ^ BODY
  * }
  */
 
 pub const REQ_PARAM: &str = "__req_param__";
 
-// https://regex101.com/r/Bw126K/1
-const CLASS_REGEX: &str =
-    r"(?m)^\s*export\s+default\s+class\s+(.+)\simplements\s+(.*)IController\s+\{\s*";
+// https://regex101.com/r/64vt2Q/2
+const HANDLER_REGEX: &str = r"(?m)export\s+(?:async\s+)?function\s+(\w+)\s*\((?:(\w+)(?::\s+[^)]+)?)?\)(?::\s+.+)?\s*\{|export\s+const\s+(\w+)\s*=\s*(?:async)?\s*\((?:(\w+)(?::\s+[^)]+)?)?\)(?::\s+.+)?\s*=>\s*\{";
 
-const METHOD_REGEX: &str = r"GET|POST|DELETE|PATCH|OPTIONS|ANY";
-
-// https://regex101.com/r/FEA6Zz/2
-const HANDLER_REGEX: &str =
-    r"\(\s*(?:([a-zA-Z0-9_]+)(?::\s*(?:\w+)\s*)?)?\)(?:\s*:\s*[^{]+\s*)?\s*\{";
+// https://regex101.com/r/IiUXQZ/3
+const DEFAULT_REGEX: &str = r"(?m)export\s+default\s+(?:async\s+)?function\s+\w*\s*\((?:(\w+)(?::\s+[^)]+)?)?\)(?::\s+.+)?\s*\{|export\s+default\s+(?:async)?\s*\((?:(\w+)(?::\s+[^)]+)?)?\)(?::\s+.+)?\s*=>\s*\{";
 
 pub fn http_parse(
     content: String,
@@ -97,57 +88,13 @@ pub fn http_parse(
         return Err(HttpParseError::Empty(rel_path));
     }
 
-    let class_regex = Regex::new(CLASS_REGEX).unwrap();
-    let class_col_index = class_regex.find(&content);
-    let class_col_index = match class_col_index {
-        Some(find) => find,
-        None => return Err(HttpParseError::NoClass(rel_path)),
-    };
-    drop(class_regex);
-
     let handlers: RefCell<Vec<HttpHandler>> = RefCell::new(Vec::new());
-    let content = (&content[class_col_index.end()..]).to_string();
+    let content = content.to_string();
 
-    let method_regex = Regex::new(METHOD_REGEX).unwrap();
     let handler_regex = Regex::new(HANDLER_REGEX).unwrap();
+    let default_regex = Regex::new(DEFAULT_REGEX).unwrap();
 
-    let next_handler = recur_fn(|next_handler, remain: String| -> Option<HttpParseError> {
-        // Empty file
-        if remain.len() <= 1 {
-            return None;
-        }
-
-        let method = method_regex.find(&remain);
-        let method = match method {
-            Some(method) => method,
-            None => return None,
-        };
-
-        let (method, handler_idx) = (
-            remain[method.start()..method.end()].to_string(),
-            method.end(),
-        );
-
-        let remain = remain[handler_idx..].to_string();
-
-        let handler = handler_regex.captures(&remain);
-        let handler = match handler {
-            Some(handler) => handler,
-            None => {
-                return Some(HttpParseError::InvalidSyntax(
-                    rel_path.clone(),
-                    format!("Method {} doesn't have handler", method),
-                ))
-            }
-        };
-
-        let req_param = handler
-            .get(1)
-            .map(|req_param| req_param.as_str().to_string());
-
-        let body_idx = handler.get(0).unwrap().end();
-        let remain = remain[body_idx..].trim().to_string();
-
+    let process_handler = |remain: &String, req_param: Option<String>| {
         let mut brace_count = 1;
         let mut tmp_remain = remain.clone();
         let mut length = 0;
@@ -173,10 +120,14 @@ pub fn http_parse(
                 }
                 // Both can't be none
                 (None, None) => {
-                    return Some(HttpParseError::InvalidSyntax(
-                        rel_path.clone(),
-                        "".to_string(),
-                    ));
+                    return (
+                        None,
+                        None,
+                        Some(HttpParseError::InvalidSyntax(
+                            rel_path.clone(),
+                            "".to_string(),
+                        )),
+                    );
                 }
             };
             brace_count += delta;
@@ -196,14 +147,83 @@ pub fn http_parse(
 
         let end = req_decl + remain[0..(length - 1)].trim();
 
+        let remain = remain[length..].to_string();
+
+        (Some(remain), Some(end), None)
+    };
+
+    let next_handler = recur_fn(|next_handler, remain: String| -> Option<HttpParseError> {
+        // Empty file
+        if remain.len() <= 1 {
+            return None;
+        }
+
+        let handler = handler_regex.captures(&remain);
+        let handler = match handler {
+            Some(handler) => handler,
+            None => return None,
+        };
+
+        let method = handler
+            .get(1)
+            .or_else(|| handler.get(3))
+            .map(|method| method.as_str().to_string())
+            .unwrap();
+
+        let req_param = handler
+            .get(2)
+            .or_else(|| handler.get(4))
+            .map(|req_param| req_param.as_str().to_string());
+
+        let body_idx = handler.get(0).unwrap().end();
+        let remain = remain[body_idx..].trim().to_string();
+
+        let (remain, body, err) = process_handler(&remain, req_param.clone());
+
+        if err.is_some() {
+            return err;
+        }
+
+        let (remain, body) = (remain.unwrap(), body.unwrap());
+
         handlers.borrow_mut().push(HttpHandler {
             method: HTTPMethod::from_string(method).unwrap(),
-            body: end,
+            body,
             req_param,
         });
 
-        next_handler(remain[length..].to_string())
+        next_handler(remain)
     });
+
+    'l: {
+        let handler = default_regex.captures(&content);
+        let handler = match handler {
+            Some(handler) => handler,
+            None => break 'l,
+        };
+
+        let req_param = handler
+            .get(1)
+            .or_else(|| handler.get(2))
+            .map(|req_param| req_param.as_str().to_string());
+
+        let body_idx = handler.get(0).unwrap().end();
+        let remain = &content[body_idx..].trim().to_string();
+
+        let (_, body, err) = process_handler(&remain, req_param.clone());
+
+        if err.is_some() {
+            break 'l
+        }
+
+        let body = body.unwrap();
+
+        handlers.borrow_mut().push(HttpHandler {
+            method: HTTPMethod::ANY,
+            body,
+            req_param,
+        });
+    };
 
     match next_handler.call(content) {
         Some(err) => Err(err),
