@@ -1,4 +1,3 @@
-use std::env::JoinPathsError;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -18,17 +17,14 @@ pub fn relative_path(target: String, base: String) -> Option<PathBuf> {
     Some(relative.into())
 }
 
-pub fn join_paths<B: Into<String>, T: Into<String>>(
-    target: T,
-    base: B,
-) -> Result<String, JoinPathsError> {
-    let target = PathBuf::from_str(&target.into()).unwrap();
+pub fn join_paths<B: AsRef<str>, T: AsRef<str>>(target: T, base: B) -> String {
+    let target = PathBuf::from_str(target.as_ref()).unwrap();
 
     if target.has_root() {
-        return Ok(target.display().to_string());
+        return target.display().to_string();
     }
 
-    let mut base = PathBuf::from_str(&base.into()).unwrap();
+    let mut base = PathBuf::from_str(base.as_ref()).unwrap();
 
     for section in target.iter() {
         match section.to_str().unwrap() {
@@ -42,5 +38,5 @@ pub fn join_paths<B: Into<String>, T: Into<String>>(
         }
     }
 
-    Ok(base.display().to_string())
+    base.display().to_string()
 }

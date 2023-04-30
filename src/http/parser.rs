@@ -213,7 +213,7 @@ pub fn http_parse(
         let (_, body, err) = process_handler(&remain, req_param.clone());
 
         if err.is_some() {
-            break 'l
+            break 'l;
         }
 
         let body = body.unwrap();

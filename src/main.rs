@@ -65,20 +65,17 @@ fn main() {
             }
         }
     };
-    let example_server = join_paths(rel_path, path.display().to_string()).unwrap();
+    let example_server = join_paths(rel_path, path.display().to_string());
     let http_tree = http_discover(CompileContext {
-        output_dir: join_paths(".densky", example_server.clone()).unwrap_or_else(|err| {
-            println!("{:#?}", err);
-            String::from("PATH")
-        }),
-        routes_path: join_paths("src/routes", example_server.clone()).unwrap(),
-        views_path: join_paths("src/views", example_server.clone()).unwrap(),
-        static_path: join_paths("src/static", example_server.clone()).unwrap(),
+        output_dir: join_paths(".densky", example_server.clone()),
+        routes_path: join_paths("src/routes", example_server.clone()),
+        views_path: join_paths("src/views", example_server.clone()),
+        static_path: join_paths("src/static", example_server.clone()),
         verbose: true,
         static_prefix: "static/".to_string(),
     });
 
-    process_entry(&http_tree.unwrap().borrow());
+    // process_entry(&http_tree.unwrap().borrow());
 
     // let matcher = UrlMatcher::new("TARGET".to_owned(), "abc/$VAR/def".to_owned());
     // println!("{:#?}", &matcher);
@@ -93,12 +90,12 @@ fn main() {
     // println!("--- UPDATE_DECL");
     // println!("{}", matcher.update_decl("req".to_owned()));
 
-    // let http_tree = http_tree.map(|tree| tree.borrow().clone());
-    //
-    // if let Ok(http_tree) = &http_tree {
-    //     // println!("{:#?}", http_tree);
-    //     println!("{}", http_tree);
-    // } else {
-    //     println!("{:#?}", http_tree);
-    // }
+    let http_tree = http_tree.map(|tree| tree.borrow().clone());
+
+    if let Ok(http_tree) = &http_tree {
+        // println!("{:#?}", http_tree);
+        println!("{}", http_tree);
+    } else {
+        println!("{:#?}", http_tree);
+    }
 }

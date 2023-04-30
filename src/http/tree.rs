@@ -184,7 +184,7 @@ impl HttpTree {
     /// Add the child to the tree. For that exists many ways:
     /// - *fallback* (`*/_fallback`): The file is used as fallback of this route and children.
     /// - *middleware* (`*/_middleware`): Same as fallback but with the middleware
-    /// - *index* (`*/_index`): Move route to be the leaf of them parent.
+    /// - *index* (`*/_index`): Move route to be the leaf of its parent.
     /// - *Any other*: Pass through an algoritnm to decide other many ways:
     ///   + *Merge*: If two routes share some segment on the `rel_path` then make
     ///            a new tree with that segment as `rel_path` and make it as container.
@@ -396,5 +396,9 @@ impl HttpTree {
         }
 
         return Some(other_path);
+    }
+
+    pub fn generate_file(&self) -> Result<String, ()> {
+        Ok(String::new())
     }
 }

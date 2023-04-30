@@ -33,3 +33,19 @@ fn get_common_path() {
         Some("a/b".to_string())
     );
 }
+
+#[test]
+fn resolve_import() {
+    let leaf = HttpLeaf {
+        path: "".to_string(),
+        rel_path: "".to_string(),
+        file_path: "/project/path/routes/file1.ts".into(),
+        output_path: "/project/path/.densky/http/file1.ts".into(),
+    };
+
+    assert_eq!(
+        leaf.resolve_import("../utils/foo.ts"),
+        Some("../../utils/foo.ts".to_string())
+    );
+    assert_eq!(leaf.resolve_import("module"), Some("module".to_string()));
+}

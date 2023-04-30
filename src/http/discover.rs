@@ -11,14 +11,10 @@ use super::{HttpLeaf, HttpTree};
 pub enum HttpDiscoverError {
     GlobError(PatternError),
     EntryError(GlobError),
-    JoinPath(JoinPathsError),
 }
 
 pub fn http_discover(ctx: CompileContext) -> Result<Rc<RefCell<HttpTree>>, HttpDiscoverError> {
-    let output_path = match join_paths("http", &ctx.output_dir) {
-        Ok(path) => path,
-        Err(err) => return Err(HttpDiscoverError::JoinPath(err)),
-    };
+    let output_path = join_paths("http", &ctx.output_dir);
 
     let glob_iter = Path::new(&ctx.routes_path)
         .join("**/*.ts")
@@ -43,10 +39,7 @@ pub fn http_discover(ctx: CompileContext) -> Result<Rc<RefCell<HttpTree>>, HttpD
         };
         let path = "/".to_string() + &relative.with_extension("").display().to_string();
         let file_path = entry.display().to_string();
-        let output_path = match join_paths(relative.to_str().unwrap(), output_path.to_string()) {
-            Ok(path) => path,
-            Err(err) => return Err(HttpDiscoverError::JoinPath(err)),
-        };
+        let output_path = join_paths(relative.to_str().unwrap(), output_path.to_string());
 
         let leaf = HttpLeaf::new(path, file_path, output_path);
         let mut leaf = HttpTree::new_leaf(leaf);
