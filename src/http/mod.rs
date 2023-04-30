@@ -4,6 +4,7 @@ mod mod_test;
 mod parser;
 mod tree;
 
+use std::cell::RefCell;
 use std::io;
 use std::str::FromStr;
 use std::{fs, path::PathBuf};
@@ -69,5 +70,58 @@ impl HttpLeaf {
         }
     }
 
-    pub fn get_imports(&self) {}
+    fn get_imports(&self) -> Option<(String, String)> {
+        let content = match &self.content {
+            Some(e) => e,
+            None => return None,
+        };
+        let content = RefCell::new(content.clone());
+
+        let mut imports: Vec<String> = Vec::new();
+
+        loop {
+            let mut content_mut = content.borrow_mut();
+            let import_idx = match &content_mut.find("import") {
+                Some(idx) => idx.clone(),
+                None => break,
+            };
+
+            let content = &content_mut[(import_idx + "import ".len())..];
+            let quote_idx = match &content.find("\"") {
+                Some(idx) => idx.clone(),
+                None => break,
+            };
+
+            let inner = if quote_idx < "  from ".len() {
+                None
+            } else {
+                let from_idx = match &content.find("from") {
+                    Some(idx) => idx.clone(),
+                    None => panic!("Malformed import"),
+                };
+                Some(&content[..(from_idx - 1)])
+            };
+
+            let last_quote_idx = match &content.chars().skip(quote_idx + 1).position(|c| c == '"') {
+                Some(idx) => idx.clone(),
+                None => panic!("Malformed import"),
+            };
+
+            let out_idx = quote_idx + last_quote_idx + 2;
+            let path = &content[(quote_idx + 1)..(out_idx - 1)];
+            let path = self.resolve_import(path).unwrap();
+            let import_statement = if let Some(inner) = inner {
+                format!("import {} from \"{}\"", inner, path)
+            } else {
+                format!("import \"{}\"", path)
+            };
+            let content = &content[(out_idx)..];
+            *content_mut = content.to_string();
+
+            imports.push(import_statement);
+        }
+
+        let content = content.borrow();
+        Some((imports.join(";\n"), content.to_string()))
+    }
 }

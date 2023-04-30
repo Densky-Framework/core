@@ -109,7 +109,7 @@ impl fmt::Debug for HttpTree {
             .field("children", &children)
             .field("leaf", &format_args!("{}", leaf))
             .field("middleware", &self.middleware)
-            .field("fallback", &self.fallback)
+            .field("fallback", &fallback)
             .finish()
     }
 }

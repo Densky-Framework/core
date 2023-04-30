@@ -1,4 +1,4 @@
-use std::{cell::RefCell, env::JoinPathsError, path::Path, rc::Rc};
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use glob::{glob, GlobError, PatternError};
 use pathdiff::diff_paths;
