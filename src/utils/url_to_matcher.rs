@@ -1,5 +1,5 @@
-pub const PREPARE_PREFIX: &str = "__matcher_prepare_";
-pub const SERIAL_PREFIX: &str = "__matcher_serial_";
+pub const PREPARE_PREFIX: &str = "__matcher_prepare";
+pub const SERIAL_PREFIX: &str = "__matcher_serial";
 pub const MATCHER_PREFIX: &str = "__matcher_matcher_";
 
 #[derive(Debug, Clone)]
@@ -41,20 +41,21 @@ impl UrlMatcherSegment {
 
 #[derive(Debug, Clone)]
 pub struct UrlMatcher {
-    pub target_name: String,
     pub url: String,
     pub segments: Vec<UrlMatcherSegment>,
     pub has_variables: bool,
 }
 
 impl UrlMatcher {
-    pub fn new(target_name: String, url: String) -> UrlMatcher {
+    pub fn new(url: String) -> UrlMatcher {
+        let mut has_variables = false;
         let segments: Vec<UrlMatcherSegment> = url
             .split('/')
             .map(|segment| {
                 if segment.len() == 0 {
                     UrlMatcherSegment::Static(segment.to_string())
                 } else if &segment[0..1] == "$" {
+                    has_variables = true;
                     UrlMatcherSegment::Var(segment[1..].to_string())
                 } else {
                     UrlMatcherSegment::Static(segment.to_string())
@@ -62,90 +63,59 @@ impl UrlMatcher {
             })
             .collect();
 
-        let has_variables = segments.iter().find(|segment| segment.is_var()).is_some();
-
         UrlMatcher {
-            target_name,
             url,
             segments,
             has_variables,
         }
     }
 
-    pub fn exact_decl(&self, param: Option<String>) -> String {
+    pub fn exact_decl<V>(&self, val: V) -> String
+    where
+        V: AsRef<str>,
+    {
+        format!("{}.__accumulator__.segments.length === 0", val.as_ref())
+        // if self.has_variables {
+        //     format!(
+        //         "{4}EXACT({2}{0}, {3}{0}, {1}, new Map())",
+        //         self.target_name,
+        //         param.unwrap(),
+        //         PREPARE_PREFIX,
+        //         SERIAL_PREFIX,
+        //         MATCHER_PREFIX
+        //     )
+        // } else {
+        //     format!("{}{} === '{}'", PREPARE_PREFIX, self.target_name, self.url)
+        // }
+    }
+
+    pub fn start_decl<V>(&self, req: V) -> String
+    where
+        V: AsRef<str>,
+    {
+        let req = req.as_ref();
         if self.has_variables {
             format!(
-                "{4}EXACT({2}{0}, {3}{0}, {1}, new Map())",
-                self.target_name,
-                param.unwrap(),
-                PREPARE_PREFIX,
-                SERIAL_PREFIX,
-                MATCHER_PREFIX
+                "{1}START({0}.__accumulator__.segments, {2}, {0}.params, new Map())",
+                req, MATCHER_PREFIX, SERIAL_PREFIX,
             )
         } else {
-            format!("{}{} === '{}'", PREPARE_PREFIX, self.target_name, self.url)
+            format!("{}.__accumulator__.path.startsWith('{}')", req, self.url)
         }
     }
 
-    pub fn start_decl(&self, param: Option<String>) -> String {
-        if self.has_variables {
-            format!(
-                "{4}START({2}{0}, {3}{0}, {1}, new Map())",
-                self.target_name,
-                param.unwrap(),
-                PREPARE_PREFIX,
-                SERIAL_PREFIX,
-                MATCHER_PREFIX
-            )
-        } else {
-            format!(
-                "{}{}.startsWith('{}')",
-                PREPARE_PREFIX, self.target_name, self.url
-            )
-        }
-    }
-
-    pub fn prepare_decl(&self, val: String) -> String {
-        format!(
-            "const {}{} = {}.__accumulator__.{}",
-            PREPARE_PREFIX,
-            self.target_name,
-            val,
-            if self.has_variables {
-                "segments"
-            } else {
-                "path"
-            }
-        )
-    }
-
-    pub fn update_decl(&self, val: String) -> String {
-        let accumulator = format!("{}.__accumulator__", &val);
+    pub fn update_decl<V>(&self, val: V) -> String
+    where
+        V: AsRef<str>,
+    {
+        let accumulator = format!("{}.__accumulator__", val.as_ref());
         let corrector = if self.url == "/" { 1 } else { 0 };
-        let segments_code = format!(
-            "{0}.segments = {0}.segments.slice({1});",
-            &accumulator,
+        format!(
+            "{0}.segments = {0}.segments.slice({1});
+{0}.path = {0}.segments.join(\"/\");",
+            accumulator,
             self.segments.len() - corrector
-        );
-        if self.has_variables {
-            format!(
-                "{{
-  const my = {1}.path.split(\"/\").slice(0, {2});
-  {0}
-  {1}.path = {1}.path.slice(my.join(\"/\").length + 1)
-}}",
-                segments_code,
-                accumulator,
-                self.segments.len()
-            )
-        } else {
-            format!(
-                "{0}\n{1}.path = {1}.path.slice({2})",
-                segments_code,
-                accumulator,
-                self.url.len() + 1 - corrector
-            )
-        }
+        )
     }
 
     pub fn serial_decl(&self) -> String {
@@ -161,10 +131,7 @@ impl UrlMatcher {
             serialized += "]";
             format!(
                 "{}\n{}\n{}",
-                format!(
-                    "const {}{} = {};",
-                    SERIAL_PREFIX, self.target_name, serialized
-                ),
+                format!("const {} = {};", SERIAL_PREFIX, serialized),
                 format!(
                     "const {}EXACT = (target, serial, resultMap, paramMap) => {{
   if (target.length !== serial.length) return false;

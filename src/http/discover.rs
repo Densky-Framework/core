@@ -14,7 +14,7 @@ pub enum HttpDiscoverError {
 }
 
 pub fn http_discover(ctx: CompileContext) -> Result<Rc<RefCell<HttpTree>>, HttpDiscoverError> {
-    let output_path = join_paths("http", &ctx.output_dir);
+    let output_dir = join_paths("http", &ctx.output_dir);
 
     let glob_iter = Path::new(&ctx.routes_path)
         .join("**/*.ts")
@@ -27,6 +27,7 @@ pub fn http_discover(ctx: CompileContext) -> Result<Rc<RefCell<HttpTree>>, HttpD
     };
 
     let tree = HttpTree {
+        output_path: join_paths("_index", &output_dir).into(),
         is_root: true,
         ..Default::default()
     };
@@ -39,11 +40,11 @@ pub fn http_discover(ctx: CompileContext) -> Result<Rc<RefCell<HttpTree>>, HttpD
         };
         let path = "/".to_string() + &relative.with_extension("").display().to_string();
         let file_path = entry.display().to_string();
-        let output_path = join_paths(relative.to_str().unwrap(), output_path.to_string());
+        let output_path = join_paths(relative, &output_dir);
 
         let leaf = HttpLeaf::new(path, file_path, output_path);
         let mut leaf = HttpTree::new_leaf(leaf);
-        HttpTree::add_child(tree.clone(), &mut leaf);
+        HttpTree::add_child(tree.clone(), &mut leaf, &output_dir);
     }
 
     Ok(tree)

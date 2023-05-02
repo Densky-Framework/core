@@ -1,55 +1,32 @@
-use std::fs;
+use std::{cell::RefCell, fs, rc::Rc};
 
 use densky_core::{
-    http::{http_discover, http_parse, HttpTree},
-    utils::{join_paths, UrlMatcher},
+    http::{http_discover, HttpTree},
+    utils::join_paths,
     CompileContext,
 };
 
-fn process_entry(http_tree: &HttpTree) {
-    if let Some(leaf) = &http_tree.leaf {
-        let file_path = &leaf.borrow().file_path;
-        let handler = match http_parse(
-            fs::read_to_string(file_path.clone()).unwrap(),
-            file_path.display().to_string(),
-        ) {
-            Ok(handler) => handler,
-            Err(densky_core::http::HttpParseError::Empty(_)) => return,
-            Err(err) => panic!("{}", err),
-        };
-        // if !http_tree.is_convention() {
-        //     let matcher = UrlMatcher::new("TARGET".to_owned(), http_tree.rel_path.to_owned());
-        //     println!("-------\n{:#?}\n--------", &matcher);
-        //     println!("--- SERIAL_DECL");
-        //     println!("{}", matcher.serial_decl());
-        //     println!("--- PREPARE_DECL");
-        //     println!("{}", matcher.prepare_decl("req".to_owned()));
-        //     println!("--- START_DECL");
-        //     println!("{}", matcher.start_decl(Some("req.params".to_owned())));
-        //     println!("--- EXACT_DECL");
-        //     println!("{}", matcher.exact_decl(Some("req.params".to_owned())));
-        //     println!("--- UPDATE_DECL");
-        //     println!("{}", matcher.update_decl("req".to_owned()));
-        // }
-
-        // let output = format!("{:#?}", handler.borrow());
-        println!("{:#?}", handler.borrow());
-        // let output_path = leaf.borrow().output_path.display().to_string();
-        // println!("{}", &output_path);
-        // let _ = fs::create_dir_all(join_paths("..", output_path.clone()).unwrap());
-        // fs::write(&output_path, output).unwrap();
-    }
+fn process_entry(http_tree: &Rc<RefCell<HttpTree>>) {
+    let http_tree = http_tree.borrow();
 
     if let Some(fallback) = &http_tree.fallback {
-        process_entry(&fallback.borrow());
+        process_entry(fallback);
     }
     if let Some(middleware) = &http_tree.middleware {
-        process_entry(&middleware.borrow());
+        process_entry(middleware);
     }
 
     for child in http_tree.children.iter() {
-        process_entry(&child.borrow());
+        process_entry(child);
     }
+
+    let output = match http_tree.generate_file() {
+        Ok(o) => o,
+        Err(e) => panic!("{:?}", e),
+    };
+    let output_path = &http_tree.output_path;
+    let _ = fs::create_dir_all(output_path.parent().unwrap());
+    fs::write(output_path, output).unwrap();
 }
 
 fn main() {
@@ -65,37 +42,28 @@ fn main() {
             }
         }
     };
-    let example_server = join_paths(rel_path, path.display().to_string());
+    let example_server = join_paths(rel_path, path);
     let http_tree = http_discover(CompileContext {
-        output_dir: join_paths(".densky", example_server.clone()),
-        routes_path: join_paths("src/routes", example_server.clone()),
-        views_path: join_paths("src/views", example_server.clone()),
-        static_path: join_paths("src/static", example_server.clone()),
+        output_dir: join_paths(".densky", &example_server),
+        routes_path: join_paths("src/routes", &example_server),
+        views_path: join_paths("src/views", &example_server),
+        static_path: join_paths("src/static", &example_server),
         verbose: true,
         static_prefix: "static/".to_string(),
     });
 
-    // process_entry(&http_tree.unwrap().borrow());
+    process_entry(&http_tree.unwrap());
 
-    // let matcher = UrlMatcher::new("TARGET".to_owned(), "abc/$VAR/def".to_owned());
-    // println!("{:#?}", &matcher);
-    // println!("--- SERIAL_DECL");
-    // println!("{}", matcher.serial_decl());
-    // println!("--- PREPARE_DECL");
-    // println!("{}", matcher.prepare_decl("req".to_owned()));
-    // println!("--- START_DECL");
-    // println!("{}", matcher.start_decl(Some("req.params".to_owned())));
-    // println!("--- EXACT_DECL");
-    // println!("{}", matcher.exact_decl(Some("req.params".to_owned())));
-    // println!("--- UPDATE_DECL");
-    // println!("{}", matcher.update_decl("req".to_owned()));
-
-    let http_tree = http_tree.map(|tree| tree.borrow().clone());
-
-    if let Ok(http_tree) = &http_tree {
-        // println!("{:#?}", http_tree);
-        println!("{}", http_tree);
-    } else {
-        println!("{:#?}", http_tree);
-    }
+    // let http_tree = http_tree.map(|tree| tree.borrow().clone());
+    // if let Ok(http_tree) = &http_tree {
+    //     // println!("{:#?}", http_tree);
+    //     // println!("{}", http_tree);
+    //     // println!("{}", http_tree.generate_file().unwrap())
+    //     // if let Some(http_leaf) = &http_tree.leaf {
+    //     //     let http_leaf = http_leaf.borrow();
+    //     //     println!("{:?}", http_leaf.generate_file());
+    //     // }
+    // } else {
+    //     println!("{:#?}", http_tree);
+    // }
 }

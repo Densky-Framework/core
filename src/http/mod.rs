@@ -58,26 +58,27 @@ impl HttpLeaf {
 
     pub fn resolve_import<P: AsRef<str>>(&self, path: P) -> Option<String> {
         let path = path.as_ref().to_string();
-        if path.chars().nth(0) == Some('.') {
-            let input_dirname = self.file_path.parent()?;
-            let output_dirname = self.output_path.parent()?;
+        match path.chars().nth(0) {
+            Some(char) if char == '.' || char == '/' => {
+                let absolute = if char == '.' {
+                    let input_dirname = self.file_path.parent()?;
+                    join_paths(path, input_dirname)
+                } else {
+                    path
+                };
 
-            let absolute = join_paths::<String, String>(path, input_dirname.display().to_string());
-            relative_path(absolute, output_dirname.display().to_string())
-                .map(|path| path.display().to_string())
-        } else {
-            Some(path)
+                let output_dirname = self.output_path.parent()?;
+
+                relative_path(absolute, output_dirname).map(|path| path.display().to_string())
+            }
+            _ => Some(path),
         }
     }
 
-    fn get_imports(&self) -> Option<(String, String)> {
-        let content = match &self.content {
-            Some(e) => e,
-            None => return None,
-        };
-        let content = RefCell::new(content.clone());
+    fn get_imports(&self, content: String) -> Result<(String, String), HttpParseError> {
+        let content = RefCell::new(content);
 
-        let mut imports: Vec<String> = Vec::new();
+        let mut imports: Vec<String> = vec![];
 
         loop {
             let mut content_mut = content.borrow_mut();
@@ -97,14 +98,24 @@ impl HttpLeaf {
             } else {
                 let from_idx = match &content.find("from") {
                     Some(idx) => idx.clone(),
-                    None => panic!("Malformed import"),
+                    None => {
+                        return Err(HttpParseError::InvalidSyntax(
+                            self.rel_path.clone(),
+                            "Malformed import. Missing 'from' keyword".to_string(),
+                        ))
+                    }
                 };
                 Some(&content[..(from_idx - 1)])
             };
 
             let last_quote_idx = match &content.chars().skip(quote_idx + 1).position(|c| c == '"') {
                 Some(idx) => idx.clone(),
-                None => panic!("Malformed import"),
+                None => {
+                    return Err(HttpParseError::InvalidSyntax(
+                        self.rel_path.clone(),
+                        "Malformed import. Missing closing quote.".to_string(),
+                    ))
+                }
             };
 
             let out_idx = quote_idx + last_quote_idx + 2;
@@ -122,6 +133,49 @@ impl HttpLeaf {
         }
 
         let content = content.borrow();
-        Some((imports.join(";\n"), content.to_string()))
+        Ok((imports.join(";\n"), content.to_string()))
+    }
+
+    fn get_handlers(&self, content: String) -> Result<(String, String), HttpParseError> {
+        let (handlers, content) = match http_parse(content, self.file_path.display().to_string()) {
+            Ok(h) => h,
+            Err(e) => return Err(e),
+        };
+        let handlers: Vec<String> = handlers
+            .borrow()
+            .iter()
+            .map(|handler| {
+                let if_condition = match &handler.method {
+                    &HTTPMethod::ANY => None,
+                    &HTTPMethod::GET => Some("GET"),
+                    &HTTPMethod::POST => Some("POST"),
+                    &HTTPMethod::PATCH => Some("PATCH"),
+                    &HTTPMethod::DELETE => Some("DELETE"),
+                    &HTTPMethod::OPTIONS => Some("OPTIONS"),
+                };
+
+                if let Some(if_condition) = if_condition {
+                    format!(
+                        "if ({}.method == \"{}\") {{\n        {}\n      }}",
+                        REQ_PARAM, if_condition, &handler.body
+                    )
+                } else {
+                    handler.body.to_string()
+                }
+            })
+            .collect();
+        Ok((handlers.join("\n"), content))
+    }
+
+    pub fn get_parts(&self) -> Result<(String, String, String), HttpParseError> {
+        let content = match self.get_content() {
+            Ok(c) => c,
+            Err(_) => return Err(HttpParseError::Empty(self.rel_path.clone())),
+        };
+
+        let (imports, content) = self.get_imports(content)?;
+        let (handlers, content) = self.get_handlers(content)?;
+
+        return Ok((imports, handlers, content));
     }
 }

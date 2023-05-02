@@ -1,11 +1,13 @@
 use colored::*;
-use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::{cell::RefCell, path::Path};
 
-use super::HttpLeaf;
+use crate::utils::{join_paths, relative_path, UrlMatcher};
+
+use super::{HttpLeaf, HttpParseError, REQ_PARAM};
 
 #[derive(Clone)]
 pub struct HttpTree {
@@ -13,6 +15,8 @@ pub struct HttpTree {
     pub path: String,
     /// The path (url) relative to parent.
     pub rel_path: String,
+    pub output_path: PathBuf,
+
     pub children: Vec<Rc<RefCell<HttpTree>>>,
     pub leaf: Option<Rc<RefCell<HttpLeaf>>>,
     pub middleware: Option<Rc<RefCell<HttpTree>>>,
@@ -87,7 +91,7 @@ impl fmt::Debug for HttpTree {
                 "Some(<Leaf ({}|{}) {}>)",
                 leaf.path,
                 leaf.rel_path,
-                leaf.file_path.display().to_string()
+                leaf.file_path.display()
             )
         } else {
             "None".to_string()
@@ -106,6 +110,7 @@ impl fmt::Debug for HttpTree {
         f.debug_struct(name.as_str())
             .field("path", &self.path)
             .field("rel_path", &self.rel_path)
+            .field("output_path", &self.output_path)
             .field("children", &children)
             .field("leaf", &format_args!("{}", leaf))
             .field("middleware", &self.middleware)
@@ -119,6 +124,7 @@ impl Default for HttpTree {
         HttpTree {
             path: "/".to_string(),
             rel_path: "/".to_string(),
+            output_path: "/".into(),
             children: vec![],
             leaf: None,
             middleware: None,
@@ -145,6 +151,7 @@ impl HttpTree {
         HttpTree {
             path: leaf.path.clone(),
             rel_path: leaf.rel_path.clone(),
+            output_path: leaf.output_path.clone(),
             leaf: Some(Rc::new(RefCell::new(leaf))),
             ..Default::default()
         }
@@ -195,7 +202,7 @@ impl HttpTree {
     ///            a tree as container and `rel_path` equal to child owner (`rel_path` - `_index`).
     ///            Move the child the created container.
     ///   + *Any other*: Just add it as child.
-    pub fn add_child(self_: Rc<RefCell<Self>>, child: &mut HttpTree) {
+    pub fn add_child(self_: Rc<RefCell<Self>>, child: &mut HttpTree, output_path: &String) {
         let this = self_.clone();
         let mut this = this.borrow_mut();
         child.parent = Some(self_.clone());
@@ -203,18 +210,23 @@ impl HttpTree {
         let path = child.path.clone();
         if this.ends_with(&path, "_fallback") {
             child.set_rel_path("<FALLBACK>".to_string());
+            child.is_fallback = true;
             this.fallback = Some(Rc::new(RefCell::new(child.clone())));
         } else if this.ends_with(&path, "_middleware") {
             child.set_rel_path("<MIDDLEWARE>".to_string());
+            child.is_middleware = true;
             this.middleware = Some(Rc::new(RefCell::new(child.clone())));
         } else if this.ends_with(&path, "_index") {
             child.set_rel_path(this.rel_path.clone());
             this.leaf = child.leaf.clone();
+            if let Some(leaf) = &child.leaf {
+                this.output_path = leaf.borrow().output_path.clone();
+            }
         } else {
             let last_part = PathBuf::from_str(&path).unwrap();
-            let prefix_part = last_part.parent().unwrap().to_str().unwrap().to_string();
+            let prefix_part = last_part.parent().unwrap().display().to_string();
             let last_part = last_part.iter().nth_back(0).unwrap();
-            let last_part = last_part.to_str().unwrap().to_string();
+            let last_part = last_part.to_str().unwrap();
             let is_index = last_part == "_index";
 
             // Ignore all routes that starts with '_'
@@ -289,25 +301,32 @@ impl HttpTree {
                 if is_container {
                     child.rel_path = (&path[common_child.path.len()..]).to_string();
                     drop(common_child);
-                    HttpTree::add_child(common_child_.clone(), child);
+                    HttpTree::add_child(common_child_.clone(), child, output_path);
                     None
                 } else {
                     // else, then merge into one common container
                     drop(common_child);
                     let common_child_id = common_child_.borrow().get_id();
+                    let path = if this.path.as_str() == "/" {
+                        format!("/{}", common_path)
+                    } else {
+                        format!("{}/{}", &this.path, common_path)
+                    };
+                    let output = join_paths("_index.ts", join_paths(&path[1..], output_path));
                     let parent = HttpTree {
-                        path: if this.path.as_str() == "/" {
-                            format!("/{}", common_path)
-                        } else {
-                            format!("{}/{}", &this.path, common_path)
-                        },
+                        path,
                         rel_path: common_path,
+                        output_path: output.into(),
                         is_container: true,
                         ..Default::default()
                     };
                     let parent = Rc::new(RefCell::new(parent));
-                    HttpTree::add_child(parent.clone(), &mut common_child_.borrow_mut());
-                    HttpTree::add_child(parent.clone(), child);
+                    HttpTree::add_child(
+                        parent.clone(),
+                        &mut common_child_.borrow_mut(),
+                        output_path,
+                    );
+                    HttpTree::add_child(parent.clone(), child, output_path);
                     Some((parent.clone(), Some(common_child_id)))
                 }
             } else if is_index {
@@ -323,6 +342,11 @@ impl HttpTree {
                     path: prefix_part,
                     rel_path: rel_path.clone(),
                     is_container: true,
+                    output_path: if let Some(leaf) = &child.leaf {
+                        leaf.borrow().output_path.clone()
+                    } else {
+                        "/".into()
+                    },
                     leaf: child.leaf.clone(),
                     ..Default::default()
                 };
@@ -398,7 +422,126 @@ impl HttpTree {
         return Some(other_path);
     }
 
-    pub fn generate_file(&self) -> Result<String, ()> {
-        Ok(String::new())
+    pub fn resolve_import<P: AsRef<Path>>(&self, path: P) -> Option<String> {
+        let path = path.as_ref().display().to_string();
+        match path.chars().nth(0) {
+            Some('/') => {
+                let output_dirname = self.output_path.parent()?;
+
+                relative_path(path, output_dirname).map(|path| path.display().to_string())
+            }
+            _ => Some(path),
+        }
+    }
+
+    pub fn generate_file(&self) -> Result<String, HttpParseError> {
+        let url_matcher = UrlMatcher::new(self.rel_path.to_string());
+        let leaf_parts = self.leaf.as_ref().map(|leaf| leaf.borrow().get_parts());
+        let leaf_parts = if let Some(parts) = leaf_parts {
+            match parts {
+                Ok(expr) => Some(expr),
+                Err(e) => return Err(e.clone()),
+            }
+        } else {
+            None
+        };
+
+        let empty_string = String::new();
+        let leaf_imports = leaf_parts.as_ref().map_or(&empty_string, |parts| &parts.0);
+        let leaf_content = leaf_parts.as_ref().map_or(&empty_string, |parts| &parts.2);
+        let leaf_handlers = leaf_parts.as_ref().map_or(&empty_string, |parts| &parts.1);
+        let fallback_import = self.fallback.as_ref().map_or_else(
+            || String::new(),
+            |fallback| {
+                format!(
+                    "import $__fallback__$ from \"{}\";",
+                    self.resolve_import(&fallback.borrow().output_path).unwrap()
+                )
+            },
+        );
+        let children_import: Vec<String> = self
+            .children
+            .iter()
+            .enumerate()
+            .map(|(index, child)| {
+                format!(
+                    "import $__child__${} from \"{}\";",
+                    index,
+                    self.resolve_import(&child.borrow().output_path).unwrap()
+                )
+            })
+            .collect();
+        let children_import = children_import.join("\n");
+        let imports = format!(
+            "import $_Densky_Runtime_$ from \"densky/runtime\";\n{}\n{}{}",
+            fallback_import, children_import, leaf_imports
+        );
+
+        let fallback_handler = if self.fallback.is_some() {
+            ";return $__fallback__$(__req_param__);"
+        } else {
+            ""
+        };
+
+        let top_content = format!(
+            "{imports}
+{serial}
+{content}",
+            imports = imports,
+            content = leaf_content,
+            serial = url_matcher.serial_decl(),
+        );
+
+        let children_content: Vec<String> = (0..self.children.len())
+            .map(|index| {
+                format!(
+                    ";{{
+      const _ = $__child__${}({});
+      if (_) return _;
+    }}",
+                    index, REQ_PARAM
+                )
+            })
+            .collect();
+        let children_content = children_content.join("\n");
+
+        let handler_content = format!(
+            "if ({exact}) {{
+      {handlers}
+      {fallback_handler}
+    }}
+    {children}
+",
+            handlers = leaf_handlers,
+            exact = url_matcher.exact_decl(REQ_PARAM),
+            fallback_handler = fallback_handler,
+            children = children_content
+        );
+
+        let inner_content = if self.is_root {
+            handler_content
+        } else if self.is_fallback {
+            leaf_handlers.clone()
+        } else {
+            format!(
+                "if ({start}) {{
+    {update}
+    {inner_content}
+  }}
+",
+                inner_content = handler_content,
+                start = url_matcher.start_decl(REQ_PARAM),
+                update = url_matcher.update_decl(REQ_PARAM),
+            )
+        };
+
+        return Ok(format!(
+            "{top_content}
+;export default function(__req_param__) {{
+  {inner_content}
+}}",
+            top_content = top_content,
+            inner_content = inner_content,
+        ));
     }
 }

@@ -1,11 +1,10 @@
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::path::{Path, PathBuf};
 
 mod url_to_matcher;
 pub use url_to_matcher::*;
 
-pub fn relative_path(target: String, base: String) -> Option<PathBuf> {
-    let relative = pathdiff::diff_paths(target, base)?;
+pub fn relative_path<T: AsRef<Path>, B: AsRef<Path>>(target: T, base: B) -> Option<PathBuf> {
+    let relative = pathdiff::diff_paths(target.as_ref(), base.as_ref())?;
     let relative = relative.to_str()?;
 
     let relative = if &relative.chars().nth(0) == &Some('.') {
@@ -17,14 +16,14 @@ pub fn relative_path(target: String, base: String) -> Option<PathBuf> {
     Some(relative.into())
 }
 
-pub fn join_paths<B: AsRef<str>, T: AsRef<str>>(target: T, base: B) -> String {
-    let target = PathBuf::from_str(target.as_ref()).unwrap();
+pub fn join_paths<T: AsRef<Path>, B: AsRef<Path>>(target: T, base: B) -> String {
+    let target = PathBuf::from(target.as_ref());
 
     if target.has_root() {
         return target.display().to_string();
     }
 
-    let mut base = PathBuf::from_str(base.as_ref()).unwrap();
+    let mut base = PathBuf::from(base.as_ref());
 
     for section in target.iter() {
         match section.to_str().unwrap() {

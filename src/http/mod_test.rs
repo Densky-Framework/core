@@ -60,19 +60,28 @@ fn get_import() {
         rel_path: "".to_string(),
         file_path: "/project/path/routes/file1.ts".into(),
         output_path: "/project/path/.densky/http/file1.ts".into(),
-        content: Some(
-            "
+        content: None,
+    };
+
+    let content = "
 import toString from \"module-a\";
-import { a, b } from \"../utils/foo.ts\";
+import { a, b } from \"../foo.ts\";
 import \"./side.ts\"
 
 function get_add() {
     return toString(a + b);
 }
-"
-            .to_string(),
-        ),
-    };
+";
+    let result = leaf.get_imports(content.to_string()).unwrap();
+    let exp_1 = "import toString from \"module-a\";
+import { a, b } from \"../../foo.ts\";
+import \"../../routes/side.ts\"";
+    let exp_2 = "
 
-    assert_eq!(leaf.get_imports(), Some(("import toString from \"module-a\";\nimport { a, b } from \"../../utils/foo.ts\";\nimport \"../../routes/side.ts\"".to_string(), "\n\nfunction get_add() {\n    return toString(a + b);\n}\n".to_string())));
+function get_add() {
+    return toString(a + b);
+}
+";
+    let expected = (exp_1.to_string(), exp_2.to_string());
+    assert_eq!(result, expected);
 }
