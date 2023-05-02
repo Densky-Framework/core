@@ -3,6 +3,8 @@ mod discover;
 mod mod_test;
 mod parser;
 mod tree;
+#[cfg(test)]
+mod tree_test;
 
 use std::cell::RefCell;
 use std::io;

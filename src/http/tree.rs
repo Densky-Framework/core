@@ -224,7 +224,11 @@ impl HttpTree {
             }
         } else {
             let last_part = PathBuf::from_str(&path).unwrap();
-            let prefix_part = last_part.parent().unwrap().display().to_string();
+            let prefix_part = match last_part.parent() {
+                Some(expr) => expr,
+                None => return,
+            };
+            let prefix_part = prefix_part.display().to_string();
             let last_part = last_part.iter().nth_back(0).unwrap();
             let last_part = last_part.to_str().unwrap();
             let is_index = last_part == "_index";
@@ -318,6 +322,7 @@ impl HttpTree {
                         rel_path: common_path,
                         output_path: output.into(),
                         is_container: true,
+                        parent: Some(self_.clone()),
                         ..Default::default()
                     };
                     let parent = Rc::new(RefCell::new(parent));
@@ -348,6 +353,7 @@ impl HttpTree {
                         "/".into()
                     },
                     leaf: child.leaf.clone(),
+                    parent: Some(self_.clone()),
                     ..Default::default()
                 };
                 Some((Rc::new(RefCell::new(parent)), None))
@@ -420,6 +426,25 @@ impl HttpTree {
         }
 
         return Some(other_path);
+    }
+
+    pub fn get_middlewares(&self) -> Vec<(usize, String)> {
+        let mut middlewares: Vec<(usize, String)> = vec![];
+
+        if let Some(parent) = &self.parent {
+            for middleware in parent.borrow().get_middlewares() {
+                middlewares.push(middleware);
+            }
+        }
+
+        if let Some(middleware) = &self.middleware {
+            middlewares.push((
+                middlewares.len(),
+                middleware.borrow().output_path.display().to_string(),
+            ));
+        }
+
+        middlewares
     }
 
     pub fn resolve_import<P: AsRef<Path>>(&self, path: P) -> Option<String> {
