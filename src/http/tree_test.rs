@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use super::HttpTree;
+use super::WalkerTree;
 
 const OUTPUT_DIR: &'static str = "output";
 

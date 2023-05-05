@@ -1,4 +1,4 @@
-use super::{HttpLeaf, HttpTree};
+use super::{HttpLeaf, WalkerTree};
 
 #[test]
 fn separing_by_parts() {
@@ -15,14 +15,14 @@ fn separing_by_parts() {
 
 #[test]
 fn get_common_path() {
-    let tree_1 = HttpTree::new_leaf(HttpLeaf {
+    let tree_1 = WalkerTree::new_leaf(HttpLeaf {
         path: "".to_string(),
         rel_path: "a/b/c".to_string(),
         file_path: "".into(),
         output_path: "".into(),
         content: None,
     });
-    let tree_2 = HttpTree::new_leaf(HttpLeaf {
+    let tree_2 = WalkerTree::new_leaf(HttpLeaf {
         path: "".to_string(),
         rel_path: "a/b/d".to_string(),
         file_path: "".into(),

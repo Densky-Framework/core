@@ -12,3 +12,4 @@ recur-fn = "2.2.0"
 colored = "2"
 
 dynamic-html = { path = "../dynamic-html" }
+prettify-js = "0.1.0"
