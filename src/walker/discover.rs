@@ -5,6 +5,7 @@ use std::{
 
 use glob::{glob, GlobError, PatternError};
 use pathdiff::diff_paths;
+use walkdir::WalkDir;
 
 use crate::{utils::join_paths, CompileContext};
 
@@ -19,7 +20,7 @@ pub enum HttpDiscoverError {
 pub fn walker_tree_discover<F, R>(
     folder_name: F,
     input_path: R,
-    ctx: CompileContext,
+    ctx: &CompileContext,
 ) -> Result<(WalkerContainer, Arc<Mutex<WalkerTree>>), HttpDiscoverError>
 where
     F: AsRef<Path>,
@@ -57,4 +58,42 @@ where
     }
 
     Ok((container, root))
+}
+
+pub fn simple_discover<F, R>(
+    folder_name: F,
+    input_path: R,
+    ctx: &CompileContext,
+) -> impl Iterator<Item = Option<WalkerLeaf>>
+where
+    F: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let output_dir = join_paths(folder_name, &ctx.output_dir);
+
+    WalkDir::new(&input_path).into_iter().map(move |result| {
+        let file = match result {
+            Ok(file) => file,
+            Err(_) => return None,
+        };
+
+        let file_type = file.file_type();
+        if file_type.is_dir() {
+            return None;
+        }
+
+        let entry = file.path();
+
+        let relative = match diff_paths(&entry, &input_path) {
+            Some(path) => path,
+            None => return None,
+        };
+        let path = relative.with_extension("").display().to_string();
+        let file_path = entry.display().to_string();
+        let output_path = join_paths(relative, &output_dir);
+
+        Some(WalkerLeaf::new(path, file_path, output_path))
+
+        // println!("{}, {}, {}", path, file_path, output_path);
+    })
 }

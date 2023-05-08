@@ -7,69 +7,41 @@ mod tree;
 mod tree_test;
 
 use std::cell::RefCell;
+use std::fs;
 use std::io;
-use std::str::FromStr;
-use std::{fs, path::PathBuf};
+use std::sync::MutexGuard;
 
 pub use discover::*;
 pub use parser::*;
 pub use tree::*;
 
 use crate::utils::{join_paths, relative_path};
+use crate::walker::container::WalkerContainer;
+use crate::walker::WalkerLeaf;
 
 /// Http endpoint node
-#[derive(Debug, Clone)]
-pub struct HttpLeaf {
-    /// The absolute path (url) for this leaf
-    pub path: String,
-    /// The path (url) relative to parent.
-    pub rel_path: String,
-
-    /// The path (fs) to the current file
-    pub file_path: PathBuf,
-    /// The path (fs) to the output file
-    pub output_path: PathBuf,
-
-    pub content: Option<String>,
-}
+pub struct HttpLeaf;
 
 impl HttpLeaf {
-    pub fn new(path: String, file_path: String, output_path: String) -> HttpLeaf {
-        HttpLeaf {
-            path,
-            rel_path: String::new(),
-            file_path: PathBuf::from_str(file_path.as_str()).unwrap(),
-            output_path: PathBuf::from_str(output_path.as_str()).unwrap(),
-            content: None,
-        }
+    pub fn get_content(this: &MutexGuard<'_, WalkerLeaf>) -> io::Result<String> {
+        fs::read_to_string(&this.file_path)
     }
 
-    pub fn cache_content(&mut self) -> io::Result<()> {
-        let content = fs::read_to_string(&self.file_path)?;
-        self.content = Some(content);
-        Ok(())
-    }
-
-    pub fn get_content(&self) -> io::Result<String> {
-        if let Some(content) = &self.content {
-            Ok(content.to_string())
-        } else {
-            fs::read_to_string(&self.file_path)
-        }
-    }
-
-    pub fn resolve_import<P: AsRef<str>>(&self, path: P) -> Option<String> {
+    pub fn resolve_import<P: AsRef<str>>(
+        this: &MutexGuard<'_, WalkerLeaf>,
+        path: P,
+    ) -> Option<String> {
         let path = path.as_ref().to_string();
         match path.chars().nth(0) {
             Some(char) if char == '.' || char == '/' => {
                 let absolute = if char == '.' {
-                    let input_dirname = self.file_path.parent()?;
+                    let input_dirname = this.file_path.parent()?;
                     join_paths(path, input_dirname)
                 } else {
                     path
                 };
 
-                let output_dirname = self.output_path.parent()?;
+                let output_dirname = this.output_path.parent()?;
 
                 relative_path(absolute, output_dirname).map(|path| path.display().to_string())
             }
@@ -77,7 +49,10 @@ impl HttpLeaf {
         }
     }
 
-    fn get_imports(&self, content: String) -> Result<(String, String), HttpParseError> {
+    fn get_imports(
+        this: &MutexGuard<'_, WalkerLeaf>,
+        content: String,
+    ) -> Result<(String, String), HttpParseError> {
         let content = RefCell::new(content);
 
         let mut imports: Vec<String> = vec![];
@@ -102,7 +77,7 @@ impl HttpLeaf {
                     Some(idx) => idx.clone(),
                     None => {
                         return Err(HttpParseError::InvalidSyntax(
-                            self.rel_path.clone(),
+                            this.rel_path.clone(),
                             "Malformed import. Missing 'from' keyword".to_string(),
                         ))
                     }
@@ -114,7 +89,7 @@ impl HttpLeaf {
                 Some(idx) => idx.clone(),
                 None => {
                     return Err(HttpParseError::InvalidSyntax(
-                        self.rel_path.clone(),
+                        this.rel_path.clone(),
                         "Malformed import. Missing closing quote.".to_string(),
                     ))
                 }
@@ -122,7 +97,7 @@ impl HttpLeaf {
 
             let out_idx = quote_idx + last_quote_idx + 2;
             let path = &content[(quote_idx + 1)..(out_idx - 1)];
-            let path = self.resolve_import(path).unwrap();
+            let path = Self::resolve_import(this, path).unwrap();
             let import_statement = if let Some(inner) = inner {
                 format!("import {} from \"{}\"", inner, path)
             } else {
@@ -138,8 +113,11 @@ impl HttpLeaf {
         Ok((imports.join(";\n"), content.to_string()))
     }
 
-    fn get_handlers(&self, content: String) -> Result<(String, String), HttpParseError> {
-        let (handlers, content) = match http_parse(content, self.file_path.display().to_string()) {
+    fn get_handlers(
+        this: &MutexGuard<'_, WalkerLeaf>,
+        content: String,
+    ) -> Result<(String, String), HttpParseError> {
+        let (handlers, content) = match http_parse(content, this.file_path.display().to_string()) {
             Ok(h) => h,
             Err(e) => return Err(e),
         };
@@ -169,15 +147,56 @@ impl HttpLeaf {
         Ok((handlers.join("\n"), content))
     }
 
-    pub fn get_parts(&self) -> Result<(String, String, String), HttpParseError> {
-        let content = match self.get_content() {
+    pub fn get_parts(
+        this: &MutexGuard<'_, WalkerLeaf>,
+    ) -> Result<(String, String, String), HttpParseError> {
+        let content = match Self::get_content(this) {
             Ok(c) => c,
-            Err(_) => return Err(HttpParseError::Empty(self.rel_path.clone())),
+            Err(_) => return Err(HttpParseError::Empty(this.rel_path.clone())),
         };
 
-        let (imports, content) = self.get_imports(content)?;
-        let (handlers, content) = self.get_handlers(content)?;
+        let (imports, content) = Self::get_imports(this, content)?;
+        let (handlers, content) = Self::get_handlers(this, content)?;
 
         return Ok((imports, handlers, content));
+    }
+
+    pub fn generate_file(this: &MutexGuard<'_, WalkerLeaf>) -> Result<String, HttpParseError> {
+        let leaf_parts = Self::get_parts(this)?;
+
+        let leaf_imports = leaf_parts.0;
+        let leaf_content = leaf_parts.2;
+        let leaf_handlers = leaf_parts.1;
+        let is_empty_handlers = String::is_empty(&leaf_handlers);
+        let imports = format!(
+            "import $_Densky_Runtime_$ from \"densky/runtime\";\n{}",
+            leaf_imports
+        );
+
+        let top_content = format!(
+            "{imports}\n{content}",
+            imports = imports,
+            content = leaf_content,
+        );
+
+        let handler_content = if is_empty_handlers {
+            String::new()
+        } else {
+            leaf_handlers
+        };
+
+        let (pretty, _) = prettify_js::prettyprint(
+            format!(
+                "{top_content}
+                export default function(__req_param__) {{
+                  {inner_content}
+                }}",
+                top_content = top_content,
+                inner_content = handler_content,
+            )
+            .as_str(),
+        );
+
+        return Ok(pretty);
     }
 }

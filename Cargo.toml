@@ -13,3 +13,4 @@ colored = "2"
 
 dynamic-html = { path = "../dynamic-html" }
 prettify-js = "0.1.0"
+walkdir = "2.3.3"

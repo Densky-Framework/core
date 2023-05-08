@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::utils::join_paths;
 
@@ -66,8 +66,24 @@ impl WalkerContainer {
         self.tree.get(id - 1).cloned()
     }
 
+    pub fn get_tree_locked(&self, id: usize) -> Option<MutexGuard<'_, WalkerTree>> {
+        let arc = self.tree.get(id - 1)?;
+        match arc.lock() {
+            Ok(val) => Some(val),
+            Err(_) => None,
+        }
+    }
+
     pub fn get_leaf(&self, id: usize) -> Option<SyncNode<WalkerLeaf>> {
         self.leaf.get(id - 1).cloned()
+    }
+
+    pub fn get_leaf_locked(&self, id: usize) -> Option<MutexGuard<'_, WalkerLeaf>> {
+        let arc = self.leaf.get(id - 1)?;
+        match arc.lock() {
+            Ok(val) => Some(val),
+            Err(_) => None,
+        }
     }
 
     #[cfg(not(debug_assertions))]

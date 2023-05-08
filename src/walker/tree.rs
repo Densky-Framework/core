@@ -214,10 +214,12 @@ impl WalkerTree {
         }
 
         if let Some(parent) = self.parent {
-            let parent = container.get_tree(parent).unwrap();
-            let mut parent = parent.lock().unwrap();
+            if parent != 0 {
+                let parent = container.get_tree(parent).unwrap();
+                let mut parent = parent.lock().unwrap();
 
-            self.middlewares = parent.get_middlewares(container);
+                self.middlewares = parent.get_middlewares(container);
+            }
         }
 
         if let Some(my_mid) = self.middleware {
