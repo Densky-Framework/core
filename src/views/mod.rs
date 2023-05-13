@@ -4,11 +4,10 @@ use dynamic_html::{DynamicHtml, GenerateOptions};
 
 use crate::walker::WalkerLeaf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ViewLeaf {
     file_path: PathBuf,
     output_path: PathBuf,
-    path: String,
 }
 
 impl From<WalkerLeaf> for ViewLeaf {
@@ -17,7 +16,6 @@ impl From<WalkerLeaf> for ViewLeaf {
         Self {
             file_path: value.file_path,
             output_path: value.output_path,
-            path: value.path,
         }
     }
 }

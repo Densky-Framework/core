@@ -132,7 +132,7 @@ impl WalkerTree {
     }
 
     #[cfg(not(debug_assertions))]
-    pub fn debug(&self, f: &mut fmt::Formatter<'_>, container: &WalkerContainer) -> fmt::Result {
+    pub fn debug(&self, _f: &mut fmt::Formatter<'_>, _container: &WalkerContainer) -> fmt::Result {
         Ok(())
     }
 
@@ -261,6 +261,15 @@ impl WalkerTree {
             self.output_path = child.output_path.clone();
             child.leaf.clone()
         } else {
+            // Update relative path and fix any '/' at start
+            let rel_path = &child.path[self.path.len()..];
+            let rel_path = if rel_path.starts_with('/') {
+                &rel_path[1..]
+            } else {
+                rel_path
+            };
+            child.rel_path = rel_path.to_string();
+
             self.children.push(child_id);
             None
         };
@@ -268,6 +277,15 @@ impl WalkerTree {
         if let Some(leaf_id) = leaf_id {
             let leaf = container.get_leaf(leaf_id).unwrap();
             let mut leaf = leaf.lock().unwrap();
+
+            // Update relative path and fix any '/' at start
+            let rel_path = &leaf.path[self.path.len()..];
+            let rel_path = if rel_path.starts_with('/') {
+                &rel_path[1..]
+            } else {
+                rel_path
+            };
+            leaf.rel_path = rel_path.to_string();
             leaf.owner = self.get_id();
         }
 

@@ -16,7 +16,6 @@ pub use parser::*;
 pub use tree::*;
 
 use crate::utils::{join_paths, relative_path};
-use crate::walker::container::WalkerContainer;
 use crate::walker::WalkerLeaf;
 
 /// Http endpoint node
@@ -169,7 +168,7 @@ impl HttpLeaf {
         let leaf_handlers = leaf_parts.1;
         let is_empty_handlers = String::is_empty(&leaf_handlers);
         let imports = format!(
-            "import $_Densky_Runtime_$ from \"densky/runtime\";\n{}",
+            "import * as $_Densky_Runtime_$ from \"densky/runtime.ts\";\n{}",
             leaf_imports
         );
 
@@ -188,7 +187,7 @@ impl HttpLeaf {
         let (pretty, _) = prettify_js::prettyprint(
             format!(
                 "{top_content}
-                export default function(__req_param__) {{
+                export default async function(__req_param__) {{
                   {inner_content}
                 }}",
                 top_content = top_content,

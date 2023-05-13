@@ -70,23 +70,23 @@ impl UrlMatcher {
         }
     }
 
-    pub fn exact_decl<V>(&self, val: V) -> String
+    pub fn exact_decl<V>(&self, val: V, has_children: bool) -> String
     where
         V: AsRef<str>,
     {
-        format!("{}.__accumulator__.segments.length === 0", val.as_ref())
-        // if self.has_variables {
-        //     format!(
-        //         "{4}EXACT({2}{0}, {3}{0}, {1}, new Map())",
-        //         self.target_name,
-        //         param.unwrap(),
-        //         PREPARE_PREFIX,
-        //         SERIAL_PREFIX,
-        //         MATCHER_PREFIX
-        //     )
-        // } else {
-        //     format!("{}{} === '{}'", PREPARE_PREFIX, self.target_name, self.url)
-        // }
+        if has_children {
+            format!("{}.__accumulator__.segments.length === 0", val.as_ref())
+        } else {
+            if self.has_variables {
+                format!(
+                    "{0}EXACT({1}.__accumulator__.segments, {1}.params, new Map())",
+                    MATCHER_PREFIX,
+                    val.as_ref(),
+                )
+            } else {
+                format!("{}.__accumulator__.path === '{}'", val.as_ref(), self.url)
+            }
+        }
     }
 
     pub fn start_decl<V>(&self, req: V) -> String
@@ -96,8 +96,8 @@ impl UrlMatcher {
         let req = req.as_ref();
         if self.has_variables {
             format!(
-                "{1}START({0}.__accumulator__.segments, {2}, {0}.params, new Map())",
-                req, MATCHER_PREFIX, SERIAL_PREFIX,
+                "{1}START({0}.__accumulator__.segments, {0}.params, new Map())",
+                req, MATCHER_PREFIX,
             )
         } else {
             format!("{}.__accumulator__.path.startsWith('{}')", req, self.url)
@@ -133,53 +133,13 @@ impl UrlMatcher {
                 "{}\n{}\n{}",
                 format!("const {} = {};", SERIAL_PREFIX, serialized),
                 format!(
-                    "const {}EXACT = (target, serial, resultMap, paramMap) => {{
-  if (target.length !== serial.length) return false;
-
-  for (let i = 0; i < target.length; i++) {{
-    const targetParam = target[i];
-    const serialParam = serial[i];
-
-    if (serialParam.isVar) {{
-      paramMap.set(serialParam.varname, targetParam);
-    }} else if (serialParam.raw !== targetParam) {{
-      return false;
-    }}
-  }}
-
-  for (const [key, value] of paramMap) {{
-    resultMap.set(key, value);
-  }}
-
-  return true;
-}};
+                    "const {}EXACT = $_Densky_Runtime_$.matcherExact({});
 ",
-                    MATCHER_PREFIX
+                    MATCHER_PREFIX, SERIAL_PREFIX
                 ),
                 format!(
-                    "const {}START = (target, serial, resultMap, paramMap) => {{
-  if (target.length < serial.length) return false;
-
-  for (let i = 0; i < serial.length; i++) {{
-    if (!target[i]) return false;
-
-    const serialParam = serial[i];
-    const targetParam = target[i];
-
-    if (serialParam.isVar) {{
-      paramMap.set(serialParam.varname, targetParam);
-    }} else if (serialParam.raw !== targetParam) {{
-      return false;
-    }}
-  }}
-
-  for (const [key, value] of paramMap.entries()) {{
-    resultMap.set(key, value);
-  }}
-
-  return true;
-}}",
-                    MATCHER_PREFIX
+                    "const {}START = $_Densky_Runtime_$.matcherStart({})",
+                    MATCHER_PREFIX, SERIAL_PREFIX
                 )
             )
         }
