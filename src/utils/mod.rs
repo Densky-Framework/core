@@ -17,6 +17,25 @@ pub fn relative_path<T: AsRef<Path>, B: AsRef<Path>>(target: T, base: B) -> Opti
     Some(relative.into())
 }
 
+pub fn normalize_path<T: AsRef<Path>>(target: T) -> String {
+    let target = PathBuf::from(target.as_ref());
+
+    let mut base = PathBuf::from("/");
+
+    for section in target.iter() {
+        match section.to_str().unwrap() {
+            "." => {
+                continue;
+            }
+            ".." => {
+                base.pop();
+            }
+            str => base.push(str),
+        }
+    }
+
+    base.display().to_string()
+}
 pub fn join_paths<T: AsRef<Path>, B: AsRef<Path>>(target: T, base: B) -> String {
     let target = PathBuf::from(target.as_ref());
 
