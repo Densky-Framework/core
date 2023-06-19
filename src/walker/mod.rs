@@ -1,10 +1,12 @@
-pub mod container;
-pub mod discover;
+mod container;
+mod discover;
 mod entity;
 mod leaf;
 mod thorn;
 mod tree;
 
+pub use container::WalkerContainer;
+pub use discover::*;
 pub use entity::WalkerEntity;
 pub use leaf::WalkerLeaf;
 pub use thorn::WalkerThorn;

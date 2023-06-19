@@ -3,8 +3,7 @@ use std::path::Path;
 use std::sync::MutexGuard;
 
 use crate::utils::{relative_path, UrlMatcher};
-use crate::walker::container::WalkerContainer;
-use crate::walker::WalkerTree;
+use crate::walker::{WalkerContainer, WalkerTree};
 
 use super::{HttpLeaf, HttpParseError, REQ_PARAM};
 

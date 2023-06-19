@@ -4,6 +4,9 @@ use dynamic_html::{DynamicHtml, GenerateOptions};
 
 use crate::walker::WalkerLeaf;
 
+mod discover;
+pub use discover::*;
+
 #[derive(Debug)]
 pub struct ViewLeaf {
     file_path: PathBuf,

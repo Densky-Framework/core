@@ -4,14 +4,10 @@ use std::{
 };
 
 use densky_core::{
-    http::{HttpLeaf, HttpTree},
+    http::{http_discover, HttpLeaf, HttpTree},
     utils::join_paths,
-    views::ViewLeaf,
-    walker::{
-        container::WalkerContainer,
-        discover::{simple_discover, walker_tree_discover},
-        WalkerLeaf, WalkerTree,
-    },
+    views::{view_discover, ViewLeaf},
+    walker::{simple_discover, WalkerContainer, WalkerLeaf, WalkerTree},
     CompileContext,
 };
 
@@ -94,23 +90,12 @@ fn main() {
         static_prefix: "static/".to_owned(),
     };
 
-    let views = simple_discover(
-        "views",
-        compile_context.views_path.clone(),
-        &compile_context,
-    )
-    .filter_map(|a| a)
-    .map(ViewLeaf::from)
-    .map(process_view);
+    let views = view_discover(&compile_context);
+    for view in views {
+        process_view(view);
+    }
 
-    for _ in views {}
-
-    let (mut container, http_tree) = walker_tree_discover(
-        "http",
-        compile_context.routes_path.clone(),
-        &compile_context,
-    )
-    .unwrap();
+    let (mut container, http_tree) = http_discover(&compile_context).unwrap();
 
     process_entry(http_tree, &mut container);
 

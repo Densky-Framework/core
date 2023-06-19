@@ -12,7 +12,7 @@ use crate::{utils::join_paths, CompileContext};
 use super::{container::WalkerContainer, WalkerLeaf, WalkerTree};
 
 #[derive(Debug)]
-pub enum HttpDiscoverError {
+pub enum WalkerDiscoverError {
     GlobError(PatternError),
     EntryError(GlobError),
 }
@@ -21,7 +21,7 @@ pub fn walker_tree_discover<F, R>(
     folder_name: F,
     input_path: R,
     ctx: &CompileContext,
-) -> Result<(WalkerContainer, Arc<Mutex<WalkerTree>>), HttpDiscoverError>
+) -> Result<(WalkerContainer, Arc<Mutex<WalkerTree>>), WalkerDiscoverError>
 where
     F: AsRef<Path>,
     R: AsRef<Path>,
@@ -33,7 +33,7 @@ where
 
     let glob_iter = match glob(glob_iter) {
         Ok(glob_iter) => glob_iter,
-        Err(err) => return Err(HttpDiscoverError::GlobError(err)),
+        Err(err) => return Err(WalkerDiscoverError::GlobError(err)),
     };
 
     let mut container = WalkerContainer::new(output_dir.clone());
