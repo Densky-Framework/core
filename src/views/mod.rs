@@ -32,7 +32,9 @@ impl ViewLeaf {
         )
     }
 
-    pub fn generate_file(&self) -> Option<String> {
+    /// Transform html to ts.
+    /// Returns the TS Code and source map. Type: (code, source\_map)
+    pub fn generate_file(&self) -> Option<(String, String)> {
         let content = match fs::read_to_string(&self.file_path) {
             Ok(c) => c,
             Err(_) => return None,
@@ -41,6 +43,13 @@ impl ViewLeaf {
         let parsed = DynamicHtml::parse(&content).unwrap();
         let result = parsed.generate(&self.get_options());
 
-        Some(result)
+        let (result, source_map) = prettify_js::prettyprint(&result);
+        let source_map = prettify_js::generate_source_map(
+            self.file_path.display().to_string(),
+            content,
+            source_map,
+        );
+
+        Some((result, source_map))
     }
 }
