@@ -7,7 +7,7 @@ use densky_core::{
     http::{http_discover, HttpLeaf, HttpTree},
     utils::join_paths,
     views::{view_discover, ViewLeaf},
-    walker::{simple_discover, WalkerContainer, WalkerLeaf, WalkerTree},
+    walker::{WalkerContainer, WalkerLeaf, WalkerTree},
     CompileContext,
 };
 
