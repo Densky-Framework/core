@@ -1,8 +1,10 @@
 use std::cmp::Ordering;
+use std::fmt::Display;
+use std::fs;
 use std::path::Path;
 use std::sync::MutexGuard;
 
-use crate::utils::{relative_path, UrlMatcher};
+use crate::utils::{import, relative_path, UrlMatcher};
 use crate::walker::{WalkerContainer, WalkerTree};
 
 use super::{HttpLeaf, HttpParseError, REQ_PARAM};
@@ -10,18 +12,17 @@ use super::{HttpLeaf, HttpParseError, REQ_PARAM};
 pub struct HttpTree;
 
 impl HttpTree {
-    pub fn resolve_import<P: AsRef<Path>>(
-        this: &MutexGuard<'_, WalkerTree>,
-        path: P,
-    ) -> Option<String> {
+    pub fn resolve_import<P: AsRef<Path>>(this: &MutexGuard<'_, WalkerTree>, path: P) -> String {
         let path = path.as_ref().display().to_string();
         match path.chars().nth(0) {
             Some('/') => {
-                let output_dirname = this.output_path.parent()?;
+                let output_dirname = this.output_path.parent().expect("Output path is root");
 
-                relative_path(path, output_dirname).map(|path| path.display().to_string())
+                relative_path(path, output_dirname)
+                    .map(|path| path.display().to_string())
+                    .expect("Output path is root")
             }
-            _ => Some(path),
+            _ => path,
         }
     }
 
@@ -43,6 +44,13 @@ impl HttpTree {
             None
         };
 
+        if let Some(leaf) = this.leaf.as_ref() {
+            let leaf = container.get_leaf_locked(*leaf).unwrap();
+            let content = fs::read_to_string(&leaf.file_path).unwrap();
+            let hash = ahash::RandomState::with_seed(1029).hash_one(&content);
+            this.hash = hash;
+        }
+
         let middlewares = if this.is_middleware {
             vec![]
         } else {
@@ -57,13 +65,12 @@ impl HttpTree {
         let fallback_import = this.fallback.as_ref().map_or_else(
             || String::new(),
             |&fallback| {
-                format!(
-                    "import $__fallback__$ from \"{}\";",
+                import(
+                    "$__fallback__$",
                     Self::resolve_import(
                         this,
-                        &container.get_leaf_locked(fallback).unwrap().output_path
-                    )
-                    .unwrap()
+                        &container.get_leaf_locked(fallback).unwrap().output_path,
+                    ),
                 )
             },
         );
@@ -72,14 +79,12 @@ impl HttpTree {
             .iter()
             .enumerate()
             .map(|(index, &child)| {
-                format!(
-                    "import $__child__${} from \"{}\";",
-                    index,
+                import(
+                    format!("$__child__${index}"),
                     Self::resolve_import(
                         this,
-                        &container.get_tree_locked(child).unwrap().output_path
-                    )
-                    .unwrap()
+                        &container.get_tree_locked(child).unwrap().output_path,
+                    ),
                 )
             })
             .collect();
@@ -91,13 +96,12 @@ impl HttpTree {
                 .iter()
                 .enumerate()
                 .map(|(index, &middleware)| {
-                    format!(
-                        "import $__middleware__${index} from \"{}\";",
+                    import(
+                        format!("$__middleware__${index}"),
                         Self::resolve_import(
                             this,
-                            &container.get_leaf_locked(middleware).unwrap().output_path
-                        )
-                        .unwrap()
+                            &container.get_leaf_locked(middleware).unwrap().output_path,
+                        ),
                     )
                 })
                 .collect::<Vec<String>>()
@@ -128,8 +132,7 @@ impl HttpTree {
         };
 
         let fallback_handler = if this.fallback.is_some() {
-            "
-                return $__fallback__$(__req_param__);"
+            "return $__fallback__$(__req_param__);"
         } else {
             ""
         };
@@ -147,9 +150,9 @@ impl HttpTree {
                     *this.children.get(index).unwrap(),
                     format!(
                         "{{ 
-                      const r = await $__child__${0}({1}); 
-                      if (!!r || r === null) return r; 
-                    }};",
+                          const r = await $__child__${0}({1}); 
+                          if (!!r || r === null) return r; 
+                        }};",
                         index, REQ_PARAM
                     ),
                 )
@@ -192,10 +195,10 @@ impl HttpTree {
         } else {
             format!(
                 "if ({exact}) {{ 
-              {middlewares} 
-              {handlers} 
-              ;return new Response(\"Method not handled\", {{ status: 401 }}); 
-            }} ",
+                  {middlewares} 
+                  {handlers} 
+                  ;return new Response(\"Method not handled\", {{ status: 401 }}); 
+                }} ",
                 middlewares = middlewares_handlers,
                 handlers = leaf_handlers,
                 exact = url_matcher.exact_decl(REQ_PARAM, this.children.len() != 0),

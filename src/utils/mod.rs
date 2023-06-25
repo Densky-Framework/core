@@ -1,7 +1,9 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod importer;
 mod url_to_matcher;
+pub use importer::*;
 pub use url_to_matcher::*;
 
 pub fn relative_path<T: AsRef<Path>, B: AsRef<Path>>(target: T, base: B) -> Option<PathBuf> {

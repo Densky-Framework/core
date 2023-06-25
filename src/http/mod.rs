@@ -7,6 +7,7 @@ mod tree;
 mod tree_test;
 
 use std::cell::RefCell;
+use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::sync::MutexGuard;
@@ -15,6 +16,7 @@ pub use discover::*;
 pub use parser::*;
 pub use tree::*;
 
+use crate::utils::import;
 use crate::utils::{join_paths, relative_path};
 use crate::walker::WalkerLeaf;
 
@@ -98,9 +100,9 @@ impl HttpLeaf {
             let path = &content[(quote_idx + 1)..(out_idx - 1)];
             let path = Self::resolve_import(this, path).unwrap();
             let import_statement = if let Some(inner) = inner {
-                format!("import {} from \"{}\"", inner, path)
+                import(inner, path)
             } else {
-                format!("import \"{}\"", path)
+                import("{}", path)
             };
             let content = &content[(out_idx)..];
             *content_mut = content.to_string();
@@ -191,5 +193,9 @@ impl HttpLeaf {
         );
 
         return Ok(pretty);
+    }
+
+    fn import<T: Display, F: Display>(t: T, filename: F, hash: u64) -> String {
+        format!("import {t} from \"{filename}?version={hash}\";")
     }
 }
