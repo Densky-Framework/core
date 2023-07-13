@@ -56,7 +56,7 @@ fn process_entry(http_tree: Arc<Mutex<WalkerTree>>, container: &mut WalkerContai
 fn process_view(view: ViewLeaf) -> Option<()> {
     let output = view
         .generate_file()
-        .map(|c| prettify_js::prettyprint(&c.to_owned()).0)?;
+        .map(|c| prettify_js::prettyprint(&c.0.to_owned()).0)?;
 
     let output_path = view.output_path();
     println!("{}", output_path.display());

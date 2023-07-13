@@ -7,7 +7,6 @@ mod tree;
 mod tree_test;
 
 use std::cell::RefCell;
-use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::sync::MutexGuard;
@@ -193,9 +192,5 @@ impl HttpLeaf {
         );
 
         return Ok(pretty);
-    }
-
-    fn import<T: Display, F: Display>(t: T, filename: F, hash: u64) -> String {
-        format!("import {t} from \"{filename}?version={hash}\";")
     }
 }

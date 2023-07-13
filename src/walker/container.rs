@@ -8,6 +8,7 @@ type SyncNode<T> = Arc<Mutex<T>>;
 
 pub struct WalkerContainer {
     output_dir: String,
+    root: Option<usize>,
     tree: Vec<SyncNode<WalkerTree>>,
     leaf: Vec<SyncNode<WalkerLeaf>>,
 }
@@ -19,6 +20,7 @@ impl WalkerContainer {
     {
         WalkerContainer {
             output_dir: output_dir.as_ref().to_string(),
+            root: None,
             tree: vec![],
             leaf: vec![],
         }
@@ -33,6 +35,7 @@ impl WalkerContainer {
         root.id = self.id_tree();
         root.output_path = join_paths("_index", &self.output_dir).into();
         root.is_root = true;
+        self.root = Some(root.id);
 
         let root = Arc::new(Mutex::new(root));
         self.tree.push(root.clone());
@@ -84,6 +87,26 @@ impl WalkerContainer {
             Ok(val) => Some(val),
             Err(_) => None,
         }
+    }
+
+    pub fn get_root(&self) -> Option<SyncNode<WalkerTree>> {
+        if let Some(root) = self.root {
+            self.get_tree(root)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_root_locked(&self) -> Option<MutexGuard<'_, WalkerTree>> {
+        if let Some(root) = self.root {
+            self.get_tree_locked(root)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_root_id(&self) -> Option<usize> {
+        self.root.clone()
     }
 
     #[cfg(not(debug_assertions))]

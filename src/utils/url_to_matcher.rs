@@ -52,9 +52,7 @@ impl UrlMatcher {
         let segments: Vec<UrlMatcherSegment> = url
             .split('/')
             .map(|segment| {
-                if segment.len() == 0 {
-                    UrlMatcherSegment::Static(segment.to_string())
-                } else if &segment[0..1] == "$" {
+                if segment.len() != 0 && &segment[0..1] == "$" {
                     has_variables = true;
                     UrlMatcherSegment::Var(segment[1..].to_string())
                 } else {
@@ -70,21 +68,39 @@ impl UrlMatcher {
         }
     }
 
-    pub fn exact_decl<V>(&self, val: V, has_children: bool) -> String
+    pub fn exact_decl<V>(&self, req: V, has_children: bool) -> String
     where
         V: AsRef<str>,
     {
+        let req = req.as_ref();
         if has_children {
-            format!("{}.__accumulator__.segments.length === 0", val.as_ref())
+            format!("{req}.__accumulator__.segments.length === 0")
         } else {
             if self.has_variables {
                 format!(
-                    "{0}EXACT({1}.__accumulator__.segments, {1}.params, new Map())",
-                    MATCHER_PREFIX,
-                    val.as_ref(),
+                    "{MATCHER_PREFIX}EXACT({req}.__accumulator__.segments, {req}.params, new Map())",
                 )
             } else {
-                format!("{}.__accumulator__.path === '{}'", val.as_ref(), self.url)
+                format!("{req}.__accumulator__.path === '{}'", self.url)
+            }
+        }
+    }
+
+    pub fn exact_inline<V>(&self, req: V, has_children: bool) -> String
+    where
+        V: AsRef<str>,
+    {
+        let req = req.as_ref();
+        if has_children {
+            format!("{req}.__accumulator__.segments.length === 0")
+        } else {
+            if self.has_variables {
+                format!(
+                "$_Densky_Runtime_$.matcherExact({}, {req}.__accumulator__.segments, {req}.params, new Map())",
+                self.serial_inline()
+            )
+            } else {
+                format!("{req}.__accumulator__.path === '{}'", self.url)
             }
         }
     }
@@ -101,6 +117,21 @@ impl UrlMatcher {
             )
         } else {
             format!("{}.__accumulator__.path.startsWith('{}')", req, self.url)
+        }
+    }
+
+    pub fn start_inline<V>(&self, req: V) -> String
+    where
+        V: AsRef<str>,
+    {
+        let req = req.as_ref();
+        if self.has_variables {
+            format!(
+                "$_Densky_Runtime_$.matcherStart({}, {req}.__accumulator__.segments, {req}.params, new Map())",
+                self.serial_inline()
+            )
+        } else {
+            format!("{req}.__accumulator__.path.startsWith('{}')", self.url)
         }
     }
 
@@ -122,26 +153,30 @@ impl UrlMatcher {
         if !self.has_variables {
             "".to_string()
         } else {
-            let mut serialized = "[".to_string();
-            for segment in &self.segments {
-                serialized += &segment.to_json();
-                serialized += ",";
-            }
-            serialized.pop();
-            serialized += "]";
             format!(
                 "{}\n{}\n{}",
-                format!("const {} = {};", SERIAL_PREFIX, serialized),
+                format!("const {} = {};", SERIAL_PREFIX, self.serial_inline()),
                 format!(
-                    "const {}EXACT = $_Densky_Runtime_$.matcherExact({});
-",
+                    "const {}EXACT = $_Densky_Runtime_$.matcherExact({});",
                     MATCHER_PREFIX, SERIAL_PREFIX
                 ),
                 format!(
-                    "const {}START = $_Densky_Runtime_$.matcherStart({})",
+                    "const {}START = $_Densky_Runtime_$.matcherStart({});",
                     MATCHER_PREFIX, SERIAL_PREFIX
                 )
             )
         }
+    }
+
+    /// Transform the struct to json
+    pub fn serial_inline(&self) -> String {
+        let mut serialized = "[".to_string();
+        for segment in &self.segments {
+            serialized += &segment.to_json();
+            serialized += ",";
+        }
+        serialized.pop();
+        serialized += "]";
+        serialized
     }
 }

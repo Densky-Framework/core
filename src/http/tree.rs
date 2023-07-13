@@ -1,6 +1,4 @@
 use std::cmp::Ordering;
-use std::fmt::Display;
-use std::fs;
 use std::path::Path;
 use std::sync::MutexGuard;
 
@@ -43,13 +41,6 @@ impl HttpTree {
         } else {
             None
         };
-
-        if let Some(leaf) = this.leaf.as_ref() {
-            let leaf = container.get_leaf_locked(*leaf).unwrap();
-            let content = fs::read_to_string(&leaf.file_path).unwrap();
-            let hash = ahash::RandomState::with_seed(1029).hash_one(&content);
-            this.hash = hash;
-        }
 
         let middlewares = if this.is_middleware {
             vec![]
