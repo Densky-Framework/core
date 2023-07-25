@@ -1,7 +1,12 @@
 [package]
 name = "densky-core"
+description = "Heart of Densky Framework"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/Densky-Framework/core"
+documentation = "https://docs.densky.apika.me"
+repository = "https://github.com/Densky-Framework/core"
 
 [dependencies]
 regex = "1.7.1"
@@ -9,6 +14,6 @@ pathdiff = "0.2.1"
 recur-fn = "2.2.0"
 colored = "2"
 
-dynamic-html = { path = "../dynamic-html", default-features = false }
+dynamic-html = { version = "1.0.0", path = "../dynamic-html", default-features = false }
 prettify-js = "0.1.0"
 walkdir = "2.3.3"
