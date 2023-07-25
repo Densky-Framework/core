@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 regex = "1.7.1"
-glob = "0.3.1"
 pathdiff = "0.2.1"
 recur-fn = "2.2.0"
 colored = "2"

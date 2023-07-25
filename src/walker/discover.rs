@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use glob::{glob, GlobError, PatternError};
 use pathdiff::diff_paths;
 use walkdir::WalkDir;
 
@@ -12,44 +11,40 @@ use crate::{utils::join_paths, CompileContext};
 use super::{container::WalkerContainer, WalkerLeaf, WalkerTree};
 
 #[derive(Debug)]
-pub enum WalkerDiscoverError {
-    GlobError(PatternError),
-    EntryError(GlobError),
-}
+pub enum WalkerDiscoverError {}
 
 pub fn walker_tree_discover<F, R>(
     folder_name: F,
     input_path: R,
     ctx: &CompileContext,
-) -> Result<(WalkerContainer, Arc<Mutex<WalkerTree>>), WalkerDiscoverError>
+) -> (WalkerContainer, Arc<Mutex<WalkerTree>>)
 where
     F: AsRef<Path>,
     R: AsRef<Path>,
 {
     let output_dir = join_paths(folder_name, &ctx.output_dir);
 
-    let glob_iter = input_path.as_ref().join("**/*.ts");
-    let glob_iter = glob_iter.to_str().unwrap();
-
-    let glob_iter = match glob(glob_iter) {
-        Ok(glob_iter) => glob_iter,
-        Err(err) => return Err(WalkerDiscoverError::GlobError(err)),
-    };
-
     let mut container = WalkerContainer::new(output_dir.clone());
     let root = container.create_root();
 
-    for entry in glob_iter {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let relative = match diff_paths(&entry, &input_path) {
+    let walk_dir = WalkDir::new(&input_path).into_iter().filter_map(Result::ok);
+    for entry in walk_dir {
+        let file_path = entry.path();
+
+        if let Some(ext) = file_path.extension() {
+            if ext != "ts" {
+                continue;
+            }
+        } else {
+            continue;
+        }
+
+        let relative = match diff_paths(file_path, &input_path) {
             Some(path) => path,
             None => continue,
         };
         let path = "/".to_string() + &relative.with_extension("").display().to_string();
-        let file_path = entry.display().to_string();
+        let file_path = file_path.display().to_string();
         let output_path = join_paths(relative, &output_dir);
 
         let leaf = WalkerLeaf::new(path, file_path, output_path);
@@ -57,7 +52,7 @@ where
         root.lock().unwrap().add_child(leaf, &mut container);
     }
 
-    Ok((container, root))
+    (container, root)
 }
 
 pub fn simple_discover<F, R>(
@@ -93,7 +88,5 @@ where
         let output_path = join_paths(relative, &output_dir);
 
         Some(WalkerLeaf::new(path, file_path, output_path))
-
-        // println!("{}, {}, {}", path, file_path, output_path);
     })
 }

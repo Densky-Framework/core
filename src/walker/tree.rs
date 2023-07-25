@@ -18,12 +18,102 @@ pub struct WalkerTree {
     pub rel_path: String,
     pub output_path: PathBuf,
 
+    /// Children identifiers
+    /// ```
+    /// # use densky_core::walker::{WalkerLeaf, WalkerContainer};
+    /// # let mut container = WalkerContainer::new("output_path");
+    /// # let root = container.create_root();
+    /// # let child_id = container.add_leaf(WalkerLeaf::new("test".into(), "a.ts", "b.ts"));
+    /// # let mut root = root.lock().unwrap();
+    /// # root.add_child(child_id, &mut container);
+    /// #
+    /// for child in &root.children {
+    ///     let child = container.get_tree_locked(*child).unwrap();
+    ///
+    ///     assert_eq!(Some(root.id), child.parent);
+    /// }
+    /// ```
     pub children: Vec<usize>,
+
+    /// Leaf id
+    /// ```
+    /// # use densky_core::walker::{WalkerLeaf, WalkerContainer};
+    /// # let mut container = WalkerContainer::new("output_path");
+    /// # let root = container.create_root();
+    /// # let child_id = container.add_leaf(WalkerLeaf::new("/_index".into(), "a.ts", "b.ts"));
+    /// # let mut root = root.lock().unwrap();
+    /// # root.add_child(child_id, &mut container);
+    /// #
+    /// if let Some(leaf) = &root.leaf {
+    ///     let leaf = container.get_leaf_locked(*leaf).unwrap();
+    ///
+    ///     assert_eq!(root.id, leaf.owner);
+    /// } else {
+    ///     panic!("There's no leaf");
+    /// }
+    /// ```
     pub leaf: Option<usize>,
+
+    /// Middleware id
+    /// ```
+    /// # use densky_core::walker::{WalkerLeaf, WalkerContainer};
+    /// # let mut container = WalkerContainer::new("output_path");
+    /// # let root = container.create_root();
+    /// # let child_id = container.add_leaf(WalkerLeaf::new("/_middleware".into(), "a.ts", "b.ts"));
+    /// # let mut root = root.lock().unwrap();
+    /// # root.add_child(child_id, &mut container);
+    /// #
+    /// if let Some(middleware) = &root.middleware {
+    ///     let middleware = container.get_leaf_locked(*middleware).unwrap();
+    ///
+    ///     assert_eq!(root.id, middleware.owner);
+    /// } else {
+    ///     panic!("There's no middleware");
+    /// }
+    /// ```
     pub middleware: Option<usize>,
+
+    /// Fallback id
+    /// ```
+    /// # use densky_core::walker::{WalkerLeaf, WalkerContainer};
+    /// # let mut container = WalkerContainer::new("output_path");
+    /// # let root = container.create_root();
+    /// # let child_id = container.add_leaf(WalkerLeaf::new("/_fallback".into(), "a.ts", "b.ts"));
+    /// # let mut root = root.lock().unwrap();
+    /// # root.add_child(child_id, &mut container);
+    /// #
+    /// if let Some(fallback) = &root.fallback {
+    ///     let fallback = container.get_leaf_locked(*fallback).unwrap();
+    ///
+    ///     assert_eq!(root.id, fallback.owner);
+    /// } else {
+    ///     panic!("There's no fallback");
+    /// }
+    /// ```
     pub fallback: Option<usize>,
+
+    /// Parent id
+    /// ```
+    /// # use densky_core::walker::{WalkerLeaf, WalkerContainer};
+    /// # let mut container = WalkerContainer::new("output_path");
+    /// # let root = container.create_root();
+    /// # let child_id = container.add_leaf(WalkerLeaf::new("/a".into(), "a.ts", "b.ts"));
+    /// # let mut root = root.lock().unwrap();
+    /// # root.add_child(child_id, &mut container);
+    /// #
+    /// assert!(root.parent.is_none());
+    ///
+    /// for child in &root.children {
+    ///     let child = container.get_tree_locked(*child).unwrap();
+    ///
+    ///     assert_eq!(Some(root.id), child.parent);
+    /// }
+    /// ```
     pub parent: Option<usize>,
 
+    /// Cached middlewares.
+    ///
+    /// > Note: It's just a cache, update it with `.get_middlewares()`
     pub middlewares: Vec<usize>,
 
     pub has_index: bool,
@@ -476,13 +566,10 @@ impl WalkerTree {
 
     /// Get the shared path between two branchs.
     /// Eg.
-    /// ```rust
-    /// use densky_core::http::HttpTree;
+    /// ```
+    /// use densky_core::walker::WalkerTree;
     ///
-    /// let branch_1 = HttpTree {
-    ///     rel_path: "a/b/c/and/more".to_owned(),
-    ///     ..Default::default()
-    /// };
+    /// let branch_1 = WalkerTree::new_detailed("path", "a/b/c/and/more".to_owned(), "output_path");
     ///
     /// // Just need the relative path
     /// let branch_2 = "a/b/some/other".to_owned();
