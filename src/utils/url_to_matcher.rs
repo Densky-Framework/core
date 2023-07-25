@@ -142,8 +142,8 @@ impl UrlMatcher {
         let accumulator = format!("{}.__accumulator__", val.as_ref());
         let corrector = if self.url == "/" { 1 } else { 0 };
         format!(
-            "{0}.segments = {0}.segments.slice({1});
-{0}.path = {0}.segments.join(\"/\");",
+            "// @ts-ignore\n{0}.segments = {0}.segments.slice({1});
+// @ts-ignore\n{0}.path = {0}.segments.join(\"/\");",
             accumulator,
             self.segments.len() - corrector
         )
@@ -157,11 +157,11 @@ impl UrlMatcher {
                 "{}\n{}\n{}",
                 format!("const {} = {};", SERIAL_PREFIX, self.serial_inline()),
                 format!(
-                    "const {}EXACT = $_Densky_Runtime_$.matcherExact({});",
+                    "// @ts-ignore\nconst {}EXACT = $_Densky_Runtime_$.matcherExact({});",
                     MATCHER_PREFIX, SERIAL_PREFIX
                 ),
                 format!(
-                    "const {}START = $_Densky_Runtime_$.matcherStart({});",
+                    "// @ts-ignore\nconst {}START = $_Densky_Runtime_$.matcherStart({});",
                     MATCHER_PREFIX, SERIAL_PREFIX
                 )
             )
