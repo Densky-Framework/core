@@ -95,7 +95,7 @@ fn main() {
         process_view(view);
     }
 
-    let (mut container, http_tree) = http_discover(&compile_context).unwrap();
+    let (mut container, http_tree) = http_discover(&compile_context);
 
     process_entry(http_tree, &mut container);
 
